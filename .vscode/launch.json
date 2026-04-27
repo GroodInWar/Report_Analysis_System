@@ -1,0 +1,10 @@
+{
+  "configurations": [
+    {
+      "name": "C#: client [Default Configuration]",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}\\client\\client.csproj"
+    }
+  ]
+}
