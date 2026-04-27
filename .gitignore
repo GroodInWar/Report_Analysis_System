@@ -1,7 +1,29 @@
-.vscode
-.idea
-Screenshots_*
+# IDE/editor local files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+
+# Logs/temp files
 *.log
 *.tmp
-Screenshots_*
-*bin*
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local config/secrets
+.env
+.env.*
+appsettings.Development.json
+
+# Local screenshots/exports
+Screenshots_*/
