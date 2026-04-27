@@ -1,0 +1,5 @@
+.vscode
+.idea
+Screenshots_*
+*.log
+*.tmp
