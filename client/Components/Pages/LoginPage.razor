@@ -1,29 +1,27 @@
-﻿@page "/logIn"
-@using System.Net.Http.Json
-@using Microsoft.AspNetCore.Http.HttpResults
+﻿@page "/login"
+@using client.DTOs
 @using client.Services
 @inject AuthService AuthService
 @inject NavigationManager Navigation
-@using client.DTOs
 @rendermode InteractiveServer
 @layout MainLayout
 
 <h1>Login</h1>
 
-<EditForm Model="@registrationModel" OnValidSubmit="@Login">
+<EditForm Model="@loginModel" OnValidSubmit="@LoginAsync">
     <DataAnnotationsValidator />
     <ValidationSummary />
 
     <div class="form-group">
         <label>Username/Email</label>
-        <InputText @bind-Value="registrationModel.username" class="form-control" />
-        <ValidationMessage For="@(() => registrationModel.username)" />
+        <InputText @bind-Value="loginModel.emailOrUsername" class="form-control" />
+        <ValidationMessage For="@(() => loginModel.emailOrUsername)" />
     </div>
 
     <div class="form-group">
         <label>Password</label>
-        <InputText @bind-Value="registrationModel.password" type="password" class="form-control" />
-        <ValidationMessage For="@(() => registrationModel.password)" />
+        <InputText @bind-Value="loginModel.password" type="password" class="form-control" />
+        <ValidationMessage For="@(() => loginModel.password)" />
     </div>
 
     <button type="submit" class="btn btn-primary">Login</button>
@@ -35,20 +33,20 @@
 }
 
 @code {
-    private LoginRequest registrationModel = new();
+    private LoginRequest loginModel = new();
     private string? errorMessage;
 
-    private async Task Login()
+    private async Task LoginAsync()
     {
         errorMessage = null;
 
         try
         {
-            var result = await AuthService.Login(registrationModel);
+            var result = await AuthService.Login(loginModel);
 
             if (result)
             {
-                Navigation.NavigateTo("/dashboard");
+                Navigation.NavigateTo("/");
             }
             else
             {

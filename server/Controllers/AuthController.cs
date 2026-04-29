@@ -26,7 +26,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public IActionResult Register(RegisterRequest request)
+    public async Task<IActionResult> Register(RegisterRequest request)
     {
         if (string.IsNullOrEmpty(request.FirstName)
         || string.IsNullOrEmpty(request.LastName)
@@ -70,7 +70,7 @@ public class AuthController : ControllerBase
         };
 
         _dbContext.Users.Add(user);
-        _dbContext.SaveChangesAsync();
+        await _dbContext.SaveChangesAsync();
 
         return CreatedAtAction(
             nameof(GetCurrentUser),
