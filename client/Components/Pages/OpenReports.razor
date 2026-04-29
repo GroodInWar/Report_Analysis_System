@@ -1,0 +1,68 @@
+@page "/open-reports"
+@attribute [Authorize(Roles = "Analyst")]
+@rendermode InteractiveServer
+@layout MainLayout
+@inject IHttpClientFactory HttpFactory
+
+<h3>Open Reports</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (openReports == null)
+{
+    <p><em>Loading open reports...</em></p>
+}
+else if (openReports.Count == 0)
+{
+    <p><em>No open reports available.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Updated</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var report in openReports)
+            {
+                <tr>
+                    <td>@report.title</td>
+                    <td>@report.status</td>
+                    <td>@report.submitted_at.ToString("g")</td>
+                    <td>@report.updated_at?.ToString("g")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Report>? openReports;
+    private string? errorMessage;
+
+    private HttpClient ApiClient => HttpFactory.CreateClient("Api");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var reports = await ApiClient.GetFromJsonAsync<List<Report>>("api/reports") ?? [];
+            openReports = reports
+                .Where(report => report.status is not ReportStatus.closed and not ReportStatus.rejected)
+                .OrderByDescending(report => report.submitted_at)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading open reports: {ex.Message}";
+            openReports = [];
+        }
+    }
+}

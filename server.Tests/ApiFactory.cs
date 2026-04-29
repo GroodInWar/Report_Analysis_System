@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MySql.EntityFrameworkCore.Extensions;
+using Shared.Models;
 
 namespace server.Data;
 
@@ -44,6 +45,27 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
             db.Database.EnsureDeleted();
             db.Database.EnsureCreated();
+
+            db.Roles.Add(new Role
+            {
+                role_id = 1,
+                role_name = "user"
+            });
+
+            db.Users.Add(new User
+            {
+                user_id = 1,
+                role_id = 1,
+                first_name = "Integration",
+                last_name = "Test",
+                username = "integration_test_user",
+                email = "integration.test@example.com",
+                password_hash = "test-password-hash",
+                created_at = DateTime.UtcNow,
+                updated_at = DateTime.UtcNow
+            });
+
+            db.SaveChanges();
         });
     }
 }

@@ -1,0 +1,63 @@
+﻿@page "/logIn"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Http.HttpResults
+@using client.Services
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@using client.DTOs
+@rendermode InteractiveServer
+@layout MainLayout
+
+<h1>Login</h1>
+
+<EditForm Model="@registrationModel" OnValidSubmit="@Login">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label>Username/Email</label>
+        <InputText @bind-Value="registrationModel.username" class="form-control" />
+        <ValidationMessage For="@(() => registrationModel.username)" />
+    </div>
+
+    <div class="form-group">
+        <label>Password</label>
+        <InputText @bind-Value="registrationModel.password" type="password" class="form-control" />
+        <ValidationMessage For="@(() => registrationModel.password)" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Login</button>
+</EditForm>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private LoginRequest registrationModel = new();
+    private string? errorMessage;
+
+    private async Task Login()
+    {
+        errorMessage = null;
+
+        try
+        {
+            var result = await AuthService.Login(registrationModel);
+
+            if (result)
+            {
+                Navigation.NavigateTo("/dashboard");
+            }
+            else
+            {
+                errorMessage = "Login failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+    }
+}

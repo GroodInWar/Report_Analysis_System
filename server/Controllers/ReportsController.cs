@@ -9,12 +9,12 @@ namespace server.Controllers;
 [ApiController]
 public class ReportsController : ControllerBase
 {
-    private readonly ApplicationDbContext _db;
+    private readonly ApplicationDbContext _dbContext;
     private const string ErrorRetrievingReportsMessage = "An error occurred while retrieving reports.";
 
-    public ReportsController(ApplicationDbContext db)
+    public ReportsController(ApplicationDbContext dbContext)
     {
-        _db = db;
+        _dbContext = dbContext;
     }
 
     [HttpGet]
@@ -22,7 +22,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var reports = await _db.Reports.AsNoTracking().ToListAsync();
+            var reports = await _dbContext.Reports.AsNoTracking().ToListAsync();
             return Ok(reports);
         }
         catch (Exception)
@@ -32,9 +32,9 @@ public class ReportsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Report>> GetReport(int id)
+    public async Task<ActionResult<Report>> GetReport(uint id)
     {
-        var report = await _db.Reports.FindAsync(id);
+        var report = await _dbContext.Reports.FindAsync(id);
         if (report == null)
         {
             return NotFound();
@@ -46,25 +46,25 @@ public class ReportsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Report>> PostReport(Report report)
     {
-        _db.Reports.Add(report);
-        await _db.SaveChangesAsync();
+        _dbContext.Reports.Add(report);
+        await _dbContext.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetReport), new { id = report.report_id }, report);
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> PutReport(int id, Report report)
+    public async Task<IActionResult> PutReport(uint id, Report report)
     {
         if (id != report.report_id)
         {
             return BadRequest();
         }
 
-        _db.Entry(report).State = EntityState.Modified;
+        _dbContext.Entry(report).State = EntityState.Modified;
 
         try
         {
-            await _db.SaveChangesAsync();
+            await _dbContext.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -80,22 +80,22 @@ public class ReportsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteReport(int id)
+    public async Task<IActionResult> DeleteReport(uint id)
     {
-        var report = await _db.Reports.FindAsync(id);
+        var report = await _dbContext.Reports.FindAsync(id);
         if (report == null)
         {
             return NotFound();
         }
 
-        _db.Reports.Remove(report);
-        await _db.SaveChangesAsync();
+        _dbContext.Reports.Remove(report);
+        await _dbContext.SaveChangesAsync();
 
         return NoContent();
     }
 
-    private bool ReportExists(int id)
+    private bool ReportExists(uint id)
     {
-        return _db.Reports.Any(e => e.report_id == id);
+        return _dbContext.Reports.Any(e => e.report_id == id);
     }
 }

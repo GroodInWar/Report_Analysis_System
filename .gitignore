@@ -23,7 +23,7 @@ desktop.ini
 # Local config/secrets
 .env
 .env.*
-appsettings.Development.json
+**/appsettings.Development.json
 
 # Local screenshots/exports
 Screenshots_*/

@@ -6,7 +6,7 @@
 @layout MainLayout
 @inject IHttpClientFactory HttpFactory
 
-<h3>Reports CRUD</h3>
+<h3>Reports</h3>
 
 @if (reports == null)
 {
@@ -161,7 +161,7 @@ else
         }
     }
 
-    private async Task DeleteReport(int id)
+    private async Task DeleteReport(uint id)
     {
         try
         {
