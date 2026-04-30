@@ -1,0 +1,21 @@
+@using client.Services
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <button type="button" class="btn btn-danger" @onclick="LogoutAsync">Log Out</button>
+    </Authorized>
+    <NotAuthorized>
+        <NavLink class="btn btn-primary" href="/registration">Register</NavLink>
+        <NavLink class="btn btn-primary" href="/login">Log In</NavLink>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private async Task LogoutAsync()
+    {
+        await AuthService.Logout();
+        Navigation.NavigateTo("/");
+    }
+}

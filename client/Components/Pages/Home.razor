@@ -1,10 +1,51 @@
 ﻿@page "/"
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Home</PageTitle>
 
-<h1>Welcome to FileAnalyx</h1>
+<AuthorizeView>
+    <Authorized>
+        <h1>Welcome back, @username!</h1>
 
-<p>Your one-stop solution for file analysis and reporting. 
-  Use the navigation menu to create and manage your reports, 
-  and stay on top of your file analysis tasks with ease.
-</p>
+        <p>Email: @email</p>
+        <p>Role: @role</p>
+
+        @if (role == "Analyst")
+        {
+            <p>You have analyst access. You can review open reports.</p>
+        }
+        else
+        {
+            <p>You can create and manage your own reports.</p>
+        }
+    </Authorized>
+
+    <NotAuthorized>
+        <h1>Welcome to FileAnalyx</h1>
+
+        <p>
+            Your one-stop solution for file analysis and reporting.
+            Log in to see your personalized dashboard.
+        </p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string username = string.Empty;
+    private string email = string.Empty;
+    private string role = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            username = user.FindFirstValue(ClaimTypes.Name) ?? string.Empty;
+            email = user.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+            role = user.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        }
+    }
+}
