@@ -2,10 +2,8 @@
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
             <NotAuthorized>
-                <LayoutView Layout="typeof(Layout.MainLayout)">
-                    <h3>Access denied</h3>
-                    <p>You need an Analyst account to view this page.</p>
-                </LayoutView>
+                <h3>Access denied</h3>
+                <p>You do not have permission to view this page.</p>
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

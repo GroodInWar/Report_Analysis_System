@@ -20,6 +20,12 @@
             </NavLink>
         </div>
 
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="/incidents">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> All Incidents
+            </NavLink>
+        </div>
+
         <AuthorizeView Roles="Analyst,analyst">
             <Authorized>
                 <div class="nav-item px-3">
@@ -27,6 +33,7 @@
                         <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Open Reports
                     </NavLink>
                 </div>
+                @* TODO: Add a "My Incidents" analyst workspace once ownership-filtered incident endpoints are finalized. *@
             </Authorized>
         </AuthorizeView>
 

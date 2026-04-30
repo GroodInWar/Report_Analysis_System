@@ -1,96 +1,96 @@
 @page "/report-crud"
 @using System.Net.Http.Json
 @using System.Security.Claims
+@using client.Services
 @using Shared.Models
+@attribute [Authorize]
 @layout MainLayout
-@inject IHttpClientFactory HttpFactory
+@inject AuthService AuthService
 @inject AuthenticationStateProvider AuthStateProvider
 
 <h3>Reports</h3>
-
-@if (!string.IsNullOrEmpty(errorMessage) && !showForm)
-{
-    <div class="alert alert-danger">@errorMessage</div>
-}
-
-<AuthorizeView Roles="Analyst,analyst,Admin,admin,User,user">
+<AuthorizeView>
     <Authorized>
+        @if (!string.IsNullOrEmpty(errorMessage) && !showForm)
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
         <button @onclick="NewReport" class="btn btn-primary mb-3">New Report</button>
+
+
+        @if (reports == null)
+        {
+            <p><em>Loading reports...</em></p>
+        }
+        else if (reports.Count == 0)
+        {
+            <p><em>No reports available.</em></p>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var report in reports)
+                    {
+                        <tr>
+                            <td>@report.title</td>
+                            <td>@report.status</td>
+                            <td>@report.submitted_at.ToString("g")</td>
+                            <td>
+                                <button @onclick="@(() => EditReport(report))" class="btn btn-warning">Edit</button>
+                                <button @onclick="@(() => DeleteReport(report.report_id))"
+                                        class="btn btn-danger">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (showForm)
+        {
+            <div style="border: 1px solid #ccc; padding: 10px; margin-top: 20px;">
+                <EditForm Model="@currentReport" OnValidSubmit="@SaveReport" Context="editContext">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="form-group">
+                        <label>Title</label>
+                        <InputText @bind-Value="currentReport.title" class="form-control" />
+                        <ValidationMessage For="@(() => currentReport.title)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <InputTextArea @bind-Value="currentReport.report_text" class="form-control" />
+                        <ValidationMessage For="@(() => currentReport.report_text)" />
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div style="color: red; margin: 10px 0;">@errorMessage</div>
+                    }
+
+                    <button type="submit" class="btn btn-success">Save</button>
+                    <button type="button" @onclick="@Cancel" class="btn btn-secondary">Cancel</button>
+                </EditForm>
+            </div>
+        }
     </Authorized>
+    <NotAuthorized>
+        <p>You need to log in to manage your reports.</p>
+    </NotAuthorized>
 </AuthorizeView>
 
-@if (reports == null)
-{
-    <p><em>Loading reports...</em></p>
-}
-else if (reports.Count == 0)
-{
-    <p><em>No reports available.</em></p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var report in reports)
-            {
-                <tr>
-                    <td>@report.title</td>
-                    <td>@report.status</td>
-                    <td>@report.submitted_at.ToString("g")</td>
-                    <td>
-                        <AuthorizeView Roles="Analyst,analyst,Admin,admin,User,user">
-                            <Authorized>
-                                <button @onclick="@(() => EditReport(report))" class="btn btn-warning">Edit</button>
-                                <button @onclick="@(() => DeleteReport(report.report_id))" class="btn btn-danger">Delete</button>
-                            </Authorized>
-                            <NotAuthorized>
-                                <span class="text-muted">Log in to manage</span>
-                            </NotAuthorized>
-                        </AuthorizeView>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-
-@if (showForm)
-{
-    <div style="border: 1px solid #ccc; padding: 10px; margin-top: 20px;">
-        <EditForm Model="@currentReport" OnValidSubmit="@SaveReport">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
-
-            <div class="form-group">
-                <label>Title</label>
-                <InputText @bind-Value="currentReport.title" class="form-control" />
-                <ValidationMessage For="@(() => currentReport.title)" />
-            </div>
-
-            <div class="form-group">
-                <label>Description</label>
-                <InputTextArea @bind-Value="currentReport.report_text" class="form-control" />
-                <ValidationMessage For="@(() => currentReport.report_text)" />
-            </div>
-
-            @if (!string.IsNullOrEmpty(errorMessage))
-            {
-                <div style="color: red; margin: 10px 0;">@errorMessage</div>
-            }
-
-            <button type="submit" class="btn btn-success">Save</button>
-            <button type="button" @onclick="@Cancel" class="btn btn-secondary">Cancel</button>
-        </EditForm>
-    </div>
-}
 
 @code {
     private List<Report>? reports;
@@ -104,7 +104,7 @@ else
     private string? errorMessage;
     private uint? currentUserId;
 
-    private HttpClient ApiClient => HttpFactory.CreateClient("Api");
+    private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
     protected override async Task OnInitializedAsync()
     {
@@ -125,9 +125,16 @@ else
 
     private async Task LoadReports()
     {
+        if (currentUserId == null)
+        {
+            reports = [];
+            errorMessage = "You need to be logged in to view your reports.";
+            return;
+        }
+
         try
         {
-            reports = await ApiClient.GetFromJsonAsync<List<Report>>("api/reports");
+            reports = await ApiClient.GetFromJsonAsync<List<Report>>($"api/reports/user/{currentUserId}");
             errorMessage = null;
         }
         catch (Exception ex)

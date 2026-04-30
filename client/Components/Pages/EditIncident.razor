@@ -1,0 +1,335 @@
+@page "/incidents/{IncidentId:int}"
+@layout MainLayout
+@using System.Net
+@using System.Security.Claims
+@using client.Services
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<h3>Incident Details</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (incident == null)
+{
+    <p><em>Loading incident...</em></p>
+}
+else
+{
+    <div class="mb-3">
+        <span class="badge @(IsResolved ? "bg-success" : "bg-primary")">@StatusLabel</span>
+        <span class="text-muted ms-2">Created @incident.created_at.ToString("g")</span>
+        <span class="text-muted ms-2">Updated @incident.updated_at.ToString("g")</span>
+        @if (incident.resolved_at != null)
+        {
+            <span class="text-muted ms-2">Resolved @incident.resolved_at.Value.ToString("g")</span>
+        }
+    </div>
+
+    <EditForm Model="@incident" OnValidSubmit="@UpdateIncident">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group mb-3">
+            <label>Title</label>
+            <InputText @bind-Value="incident.incident_title" class="form-control" disabled="@(!canEdit)" />
+        </div>
+
+        <div class="form-group mb-3">
+            <label>Description</label>
+            <InputTextArea @bind-Value="incident.incident_description" class="form-control" disabled="@(!canEdit)" />
+        </div>
+
+        <div class="row">
+            <div class="form-group mb-3 col-md-6">
+                <label>Category</label>
+                <InputNumber @bind-Value="incident.category_id" class="form-control" disabled="@(!canEdit)" />
+                <div class="form-text">@CategoryLabel</div>
+            </div>
+
+            <div class="form-group mb-3 col-md-6">
+                <label>Severity</label>
+                <InputNumber @bind-Value="incident.severity_id" class="form-control" disabled="@(!canEdit)" />
+                <div class="form-text">@SeverityLabel</div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="form-group mb-3 col-md-6">
+                <label>Status</label>
+                <InputSelect @bind-Value="statusValue" class="form-select" disabled="@(!canEdit)">
+                    <option value="open">Open</option>
+                    <option value="resolved">Resolved</option>
+                </InputSelect>
+            </div>
+
+            <div class="form-group mb-3 col-md-6">
+                <label>Owner</label>
+                <input value="@OwnerLabel" class="form-control" disabled />
+            </div>
+        </div>
+
+        @if (canEdit)
+        {
+            <button type="submit" class="btn btn-success">Update Incident</button>
+        }
+        else
+        {
+            <div class="alert alert-info">Only the analyst who created this incident can modify it.</div>
+        }
+    </EditForm>
+
+    <section class="mt-4">
+        <h4>Public Details</h4>
+        <dl class="row">
+            <dt class="col-sm-3">Incident ID</dt>
+            <dd class="col-sm-9">#@incident.incident_id</dd>
+            <dt class="col-sm-3">Category</dt>
+            <dd class="col-sm-9">@CategoryLabel</dd>
+            <dt class="col-sm-3">Severity</dt>
+            <dd class="col-sm-9">@SeverityLabel</dd>
+            <dt class="col-sm-3">Status</dt>
+            <dd class="col-sm-9">@StatusLabel</dd>
+        </dl>
+    </section>
+
+    <section class="mt-4">
+        <h4>Linked Reports</h4>
+        @if (incident.Reports.Count == 0)
+        {
+            <p><em>No linked reports are visible for this incident.</em></p>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var report in incident.Reports)
+                {
+                    <a class="list-group-item list-group-item-action" href="@($"/reports/{report.report_id}")">
+                        <div class="d-flex w-100 justify-content-between">
+                            <strong>#@report.report_id @report.title</strong>
+                            <small>@report.status</small>
+                        </div>
+                        <small class="text-muted">Submitted @report.submitted_at.ToString("g")</small>
+                    </a>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="mt-4">
+        <h4>Comments</h4>
+        @if (incident.Comments.Count == 0)
+        {
+            <p><em>No comments are visible for this incident.</em></p>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var comment in incident.Comments)
+                {
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <strong>@DisplayName(comment.User, $"User #{comment.user_id}")</strong>
+                            <small>@comment.created_at.ToString("g")</small>
+                        </div>
+                        <p class="mb-0">@comment.comment_text</p>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="mt-4">
+        <h4>Files</h4>
+        @if (incident.Files.Count == 0)
+        {
+            <p><em>No files are visible for this incident.</em></p>
+        }
+        else
+        {
+            <ul class="list-group">
+                @foreach (var file in incident.Files)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>@file.file_name</span>
+                        <small class="text-muted">Uploaded @file.uploaded_at.ToString("g")</small>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public int IncidentId { get; set; }
+
+    private IncidentDetail? incident;
+    private string? errorMessage;
+    private uint? currentUserId;
+    private string statusValue = "open";
+    private bool canEdit => incident?.CanEdit ?? incident?.IsOwner ?? (incident != null && currentUserId == incident.CreatedByUserId);
+    private bool IsResolved => incident?.resolved_at != null;
+    private string StatusLabel => IsResolved ? "Resolved" : "Open";
+    private string CategoryLabel => string.IsNullOrWhiteSpace(incident?.Category?.category_name)
+        ? $"Category #{incident?.category_id}"
+        : incident.Category.category_name;
+    private string SeverityLabel => string.IsNullOrWhiteSpace(incident?.Severity?.severity_name)
+        ? $"Severity #{incident?.severity_id}"
+        : incident.Severity.severity_name;
+    private string OwnerLabel => DisplayName(incident?.CreatedByUser, $"User #{incident?.CreatedByUserId}");
+
+    private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUserId();
+        await LoadIncident();
+    }
+
+    private async Task LoadCurrentUserId()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (uint.TryParse(userIdClaim, out var userId))
+        {
+            currentUserId = userId;
+        }
+    }
+
+    private async Task LoadIncident()
+    {
+        try
+        {
+            incident = await ApiClient.GetFromJsonAsync<IncidentDetail>($"api/incidents/{IncidentId}");
+            statusValue = incident?.resolved_at == null ? "open" : "resolved";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading incident: {ex.Message}";
+        }
+    }
+
+    private async Task UpdateIncident()
+    {
+        if (incident == null)
+        {
+            return;
+        }
+
+        try
+        {
+            incident.resolved_at = statusValue == "resolved"
+                ? incident.resolved_at ?? DateTime.UtcNow
+                : null;
+            incident.updated_at = DateTime.UtcNow;
+            var response = await ApiClient.PutAsJsonAsync($"api/incidents/{incident.incident_id}", ToIncidentUpdate(incident));
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage = response.StatusCode == HttpStatusCode.Forbidden
+                    ? "You do not own this incident, so it cannot be modified."
+                    : $"Error updating incident: {response.ReasonPhrase}";
+                return;
+            }
+
+            await LoadIncident();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating incident: {ex.Message}";
+        }
+    }
+
+    private static Incident ToIncidentUpdate(IncidentDetail detail) => new()
+    {
+        incident_id = detail.incident_id,
+        CreatedByUserId = detail.CreatedByUserId,
+        category_id = detail.category_id,
+        severity_id = detail.severity_id,
+        incident_title = detail.incident_title,
+        incident_description = detail.incident_description,
+        created_at = detail.created_at,
+        updated_at = detail.updated_at,
+        resolved_at = detail.resolved_at
+    };
+
+    private static string DisplayName(UserSummary? user, string fallback)
+    {
+        if (user == null)
+        {
+            return fallback;
+        }
+
+        var fullName = $"{user.first_name} {user.last_name}".Trim();
+        if (!string.IsNullOrWhiteSpace(fullName))
+        {
+            return fullName;
+        }
+
+        return string.IsNullOrWhiteSpace(user.username) ? fallback : user.username;
+    }
+
+    private sealed class IncidentDetail
+    {
+        public uint incident_id { get; set; }
+        public uint CreatedByUserId { get; set; }
+        public UserSummary? CreatedByUser { get; set; }
+        public uint category_id { get; set; }
+        public CategorySummary? Category { get; set; }
+        public uint severity_id { get; set; }
+        public SeveritySummary? Severity { get; set; }
+        public string incident_title { get; set; } = "";
+        public string incident_description { get; set; } = "";
+        public DateTime created_at { get; set; }
+        public DateTime updated_at { get; set; }
+        public DateTime? resolved_at { get; set; }
+        public bool? CanEdit { get; set; }
+        public bool? IsOwner { get; set; }
+        public List<ReportSummary> Reports { get; set; } = [];
+        public List<CommentSummary> Comments { get; set; } = [];
+        public List<FileSummary> Files { get; set; } = [];
+    }
+
+    private sealed class UserSummary
+    {
+        public uint user_id { get; set; }
+        public string first_name { get; set; } = "";
+        public string last_name { get; set; } = "";
+        public string username { get; set; } = "";
+    }
+
+    private sealed class CategorySummary
+    {
+        public string category_name { get; set; } = "";
+    }
+
+    private sealed class SeveritySummary
+    {
+        public string severity_name { get; set; } = "";
+    }
+
+    private sealed class ReportSummary
+    {
+        public uint report_id { get; set; }
+        public string title { get; set; } = "";
+        public string status { get; set; } = "";
+        public DateTime submitted_at { get; set; }
+    }
+
+    private sealed class CommentSummary
+    {
+        public uint user_id { get; set; }
+        public UserSummary? User { get; set; }
+        public string comment_text { get; set; } = "";
+        public DateTime created_at { get; set; }
+    }
+
+    private sealed class FileSummary
+    {
+        public string file_name { get; set; } = "";
+        public DateTime uploaded_at { get; set; }
+    }
+}

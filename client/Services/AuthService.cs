@@ -100,6 +100,13 @@ public class AuthService : AuthenticationStateProvider
     return await response.Content.ReadFromJsonAsync<CurrentUserResponse>();
   }
 
+  public HttpClient CreateAuthorizedApiClient()
+  {
+    var api = Api;
+    AddBearerToken(api);
+    return api;
+  }
+
   public async Task Logout()
   {
     _token = null;

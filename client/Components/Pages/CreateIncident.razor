@@ -1,0 +1,162 @@
+@page "/incidents/create"
+@page "/incidents/create/{ReportId:int}"
+@attribute [Authorize(Roles = "Analyst,analyst")]
+@layout MainLayout
+@using System.Security.Claims
+@using client.Services
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+
+<h3>Create Incident</h3>
+
+@if (ReportId != null)
+{
+    <div class="alert alert-info mb-3">
+        @if (sourceReport == null && string.IsNullOrEmpty(sourceReportError))
+        {
+            <span>Loading source report #@ReportId...</span>
+        }
+        else if (!string.IsNullOrEmpty(sourceReportError))
+        {
+            <span>@sourceReportError</span>
+        }
+        else if (sourceReport != null)
+        {
+            <div class="fw-semibold">
+                Creating incident from
+                <a href="@($"/reports/{sourceReport.report_id}")">report #@sourceReport.report_id: @sourceReport.title</a>
+            </div>
+            <div class="small text-muted">
+                Submitted @sourceReport.submitted_at.ToString("g") &middot; Status: @sourceReport.status
+            </div>
+            <p class="mb-0 mt-2">@GetReportPreview(sourceReport.report_text)</p>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<EditForm Model="@incident" OnValidSubmit="@CreateNewIncident">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group mb-3">
+        <label>Title</label>
+        <InputText @bind-Value="incident.incident_title" class="form-control" />
+    </div>
+
+    <div class="form-group mb-3">
+        <label>Description</label>
+        <InputTextArea @bind-Value="incident.incident_description" class="form-control" />
+    </div>
+
+    <div class="row">
+        <div class="form-group mb-3 col-md-6">
+            <label>Category Id</label>
+            <InputNumber @bind-Value="incident.category_id" class="form-control" />
+        </div>
+
+        <div class="form-group mb-3 col-md-6">
+            <label>Severity Id</label>
+            <InputNumber @bind-Value="incident.severity_id" class="form-control" />
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-success">Create Incident</button>
+    <button type="button" class="btn btn-secondary" @onclick="@(() => NavigationManager.NavigateTo("/open-reports"))">Cancel</button>
+</EditForm>
+
+<div class="alert alert-warning mt-3">
+    TODO: Replace raw category/severity ids with dropdowns, validate required lookup data, attach report files, and support many analysts creating incidents from the same report.
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "sourceReportId")]
+    public int? ReportId { get; set; }
+
+    private Incident incident = new()
+    {
+        incident_title = string.Empty,
+        incident_description = string.Empty,
+        updated_at = DateTime.UtcNow
+    };
+    private string? errorMessage;
+    private Report? sourceReport;
+    private string? sourceReportError;
+
+    private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (uint.TryParse(userIdClaim, out var userId))
+        {
+            incident.CreatedByUserId = userId;
+        }
+
+        if (ReportId != null)
+        {
+            await LoadSourceReport();
+        }
+    }
+
+    private async Task LoadSourceReport()
+    {
+        try
+        {
+            sourceReport = await ApiClient.GetFromJsonAsync<Report>($"api/reports/{ReportId}");
+        }
+        catch (Exception ex)
+        {
+            sourceReportError = $"Unable to load source report #{ReportId}: {ex.Message}";
+        }
+    }
+
+    private async Task CreateNewIncident()
+    {
+        errorMessage = null;
+
+        try
+        {
+            var url = ReportId == null
+                ? "api/incidents"
+                : $"api/incidents?sourceReportId={ReportId}";
+
+            var response = await ApiClient.PostAsJsonAsync(url, incident);
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage = $"Error creating incident: {response.ReasonPhrase}";
+                return;
+            }
+
+            var created = await response.Content.ReadFromJsonAsync<Incident>();
+            NavigationManager.NavigateTo(created == null ? "/incidents" : $"/incidents/{created.incident_id}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error creating incident: {ex.Message}";
+        }
+    }
+
+    private static string GetReportPreview(string text)
+    {
+        const int maxLength = 240;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "No report details provided.";
+        }
+
+        var normalized = text.Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : $"{normalized[..maxLength]}...";
+    }
+}

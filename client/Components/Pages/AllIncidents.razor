@@ -1,0 +1,73 @@
+@page "/incidents"
+@layout MainLayout
+@inject IHttpClientFactory HttpFactory
+@inject NavigationManager NavigationManager
+
+<h3>All Incidents</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (incidents == null)
+{
+    <p><em>Loading incidents...</em></p>
+}
+else if (incidents.Count == 0)
+{
+    <p><em>No incidents available.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Severity</th>
+                <th>Created</th>
+                <th>Updated</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var incident in incidents)
+            {
+                <tr>
+                    <td>@incident.incident_title</td>
+                    <td>@incident.category_id</td>
+                    <td>@incident.severity_id</td>
+                    <td>@incident.created_at.ToString("g")</td>
+                    <td>@incident.updated_at.ToString("g")</td>
+                    <td>
+                        <button class="btn btn-info" @onclick="@(() => NavigationManager.NavigateTo($"/incidents/{incident.incident_id}"))">View</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div class="alert alert-warning">
+    TODO: Show friendly category/severity names, filtering, ownership indicators, and public-safe incident summaries for visitors who are not logged in.
+</div>
+
+@code {
+    private List<Incident>? incidents;
+    private string? errorMessage;
+
+    private HttpClient ApiClient => HttpFactory.CreateClient("Api");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            incidents = await ApiClient.GetFromJsonAsync<List<Incident>>("api/incidents") ?? [];
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading incidents: {ex.Message}";
+            incidents = [];
+        }
+    }
+}
