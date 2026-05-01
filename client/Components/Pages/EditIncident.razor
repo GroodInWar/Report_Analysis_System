@@ -143,7 +143,7 @@ else
                 {
                     <div class="list-group-item">
                         <div class="d-flex w-100 justify-content-between">
-                            <strong>@DisplayName(comment.User, $"User #{comment.user_id}")</strong>
+                            <strong>@DisplayName(comment.User, $"{comment.user_id}")</strong>
                             <small>@comment.created_at.ToString("g")</small>
                         </div>
                         <p class="mb-0">@comment.comment_text</p>
@@ -195,7 +195,7 @@ incident.CreatedByUserId);
     private string SeverityLabel => string.IsNullOrWhiteSpace(incident?.Severity?.severity_name)
         ? $"Severity #{incident?.severity_id}"
         : incident.Severity.severity_name;
-    private string OwnerLabel => DisplayName(incident?.CreatedByUser, $"User #{incident?.CreatedByUserId}");
+    private string OwnerLabel => Username(incident?.CreatedByUser, $"User #{incident?.CreatedByUserId}");
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
@@ -300,5 +300,10 @@ incident.CreatedByUserId);
         }
 
         return string.IsNullOrWhiteSpace(user.username) ? fallback : user.username;
+    }
+
+    private static string Username(UserSummary? user, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(user?.username) ? fallback : user.username;
     }
 }

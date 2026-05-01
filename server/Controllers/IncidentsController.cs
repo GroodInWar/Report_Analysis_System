@@ -34,12 +34,62 @@ public class IncidentsController : ControllerBase
 
     [HttpGet("{id}")]
     [AllowAnonymous]
-    public async Task<ActionResult<Incident>> GetIncident(uint id)
+    public async Task<ActionResult<object>> GetIncident(uint id)
     {
-        // TODO: Include only public-safe linked reports, files, comments, creator details, category, and severity for the incident detail page.
+        var currentUserId = GetCurrentUserId();
         var incident = await _dbContext.Incidents
             .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.incident_id == id);
+            .Where(i => i.incident_id == id)
+            .Select(i => new
+            {
+                i.incident_id,
+                i.CreatedByUserId,
+                CreatedByUser = i.CreatedByUser == null
+                    ? null
+                    : new
+                    {
+                        i.CreatedByUser.user_id,
+                        i.CreatedByUser.first_name,
+                        i.CreatedByUser.last_name,
+                        i.CreatedByUser.username,
+                        i.CreatedByUser.email
+                    },
+                i.category_id,
+                Category = _dbContext.Categories
+                    .Where(c => c.category_id == i.category_id)
+                    .Select(c => new
+                    {
+                        c.category_id,
+                        c.category_name
+                    })
+                    .FirstOrDefault(),
+                i.severity_id,
+                Severity = _dbContext.Severities
+                    .Where(s => s.severity_id == i.severity_id)
+                    .Select(s => new
+                    {
+                        s.severity_id,
+                        s.severity_name
+                    })
+                    .FirstOrDefault(),
+                i.incident_title,
+                i.incident_description,
+                i.created_at,
+                i.updated_at,
+                i.resolved_at,
+                CanEdit = currentUserId != null && i.CreatedByUserId == currentUserId.Value,
+                IsOwner = currentUserId != null && i.CreatedByUserId == currentUserId.Value,
+                Reports = i.Reports
+                    .Select(r => new
+                    {
+                        r.report_id,
+                        r.title,
+                        status = r.status.ToString(),
+                        r.submitted_at
+                    })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
 
         return incident == null ? NotFound() : Ok(incident);
     }
@@ -54,25 +104,52 @@ public class IncidentsController : ControllerBase
             return Unauthorized();
         }
 
-        incident.CreatedByUserId = currentUserId.Value;
-        incident.created_at = DateTime.UtcNow;
-        incident.updated_at = incident.created_at;
+        Report? sourceReport = null;
 
-        _dbContext.Incidents.Add(incident);
-
-        // TODO: Model report-to-incident links so a report can support multiple analyst-created incidents.
-        // The current Report.incident_id field is one-to-one from the report side, so this intentionally
-        // avoids claiming or mutating the source report until the relationship design is finalized.
         if (sourceReportId != null)
         {
-            var reportExists = await _dbContext.Reports.AnyAsync(r => r.report_id == sourceReportId.Value);
-            if (!reportExists)
+            sourceReport = await _dbContext.Reports
+                .FirstOrDefaultAsync(r => r.report_id == sourceReportId.Value);
+
+            if (sourceReport == null)
             {
                 return BadRequest("Source report does not exist.");
             }
+
+            if (sourceReport.status is ReportStatus.closed or ReportStatus.rejected)
+            {
+                return BadRequest("Closed or rejected reports cannot be linked to a new incident.");
+            }
         }
 
-        await _dbContext.SaveChangesAsync();
+        incident.CreatedByUserId = currentUserId.Value;
+        incident.created_at = DateTime.UtcNow;
+        incident.updated_at = incident.created_at;
+        incident.resolved_at = null;
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        try
+        {
+            _dbContext.Incidents.Add(incident);
+            await _dbContext.SaveChangesAsync();
+
+            if (sourceReport != null)
+            {
+                sourceReport.incident_id = incident.incident_id;
+                sourceReport.status = ReportStatus.linked;
+                sourceReport.updated_at = DateTime.UtcNow;
+
+                await _dbContext.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
 
         return CreatedAtAction(nameof(GetIncident), new { id = incident.incident_id }, incident);
     }
