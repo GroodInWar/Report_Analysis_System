@@ -2,16 +2,17 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using server.Data;
+using server.DTOs;
 
 namespace server.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-public class SeveritiesController : ControllerBase
+public class SeverityController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
 
-    public SeveritiesController(ApplicationDbContext dbContext)
+    public SeverityController(ApplicationDbContext dbContext)
     {
         _dbContext = dbContext;
     }
@@ -31,9 +32,4 @@ public class SeveritiesController : ControllerBase
 
         return Ok(severities);
     }
-
-    public sealed record SeverityLookupResponse(
-        uint severity_id,
-        string severity_name
-    );
 }
