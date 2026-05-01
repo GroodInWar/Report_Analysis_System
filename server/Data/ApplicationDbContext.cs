@@ -16,11 +16,38 @@ public class ApplicationDbContext : DbContext
     public DbSet<Role> Roles { get; set; }
     public DbSet<Severity> Severities { get; set; }
     public DbSet<Category> Categories { get; set; }
-    
+
+
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.ToTable("categories");
+            entity.HasKey(c => c.category_id);
+
+            entity.Property(c => c.category_name)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasIndex(c => c.category_name)
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<Severity>(entity =>
+        {
+            entity.ToTable("severity");
+            entity.HasKey(s => s.severity_id);
+
+            entity.Property(s => s.severity_name)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasIndex(s => s.severity_name)
+                .IsUnique();
+        });
+
         modelBuilder.Entity<User>(entity =>
         {
             entity.ToTable("users");
@@ -90,7 +117,7 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(i => i.incident_description)
                 .HasColumnName("incident_description")
-                .IsRequired(); 
+                .IsRequired();
 
             entity.Property(i => i.CreatedByUserId)
                 .IsRequired();
@@ -103,7 +130,7 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(i => i.resolved_at)
                 .IsRequired(false);
-                
+
             entity.HasOne(i => i.CreatedByUser)
                 .WithMany(u => u.CreatedIncidents)
                 .HasForeignKey(i => i.CreatedByUserId)

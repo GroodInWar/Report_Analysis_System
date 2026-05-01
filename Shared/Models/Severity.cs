@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Shared.Models;
 
-[Table("severities")]
+[Table("severity")]
 [Index(nameof(severity_name), IsUnique = true)]
 public class Severity
 {
