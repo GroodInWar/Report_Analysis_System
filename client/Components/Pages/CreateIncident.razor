@@ -56,28 +56,42 @@
 
     <div class="row">
         <div class="form-group mb-3 col-md-6">
-            <label>Category Id</label>
-            <InputNumber @bind-Value="incident.category_id" class="form-control" />
+            <label>Category</label>
+            <InputSelect TValue="uint" @bind-Value="incident.category_id" class="form-select">
+                <option value="0" disabled>Choose a category...</option>
+                @foreach (var category in categories)
+                {
+                    <option value="@category.category_id">@category.category_name</option>
+                }
+            </InputSelect>
         </div>
 
         <div class="form-group mb-3 col-md-6">
-            <label>Severity Id</label>
-            <InputNumber @bind-Value="incident.severity_id" class="form-control" />
+            <label>Severity</label>
+            <InputSelect TValue="uint" @bind-Value="incident.severity_id" class="form-select">
+                <option value="0" disabled>Choose a severity...</option>
+                @foreach (var severity in severities)
+                {
+                    <option value="@severity.severity_id">@severity.severity_name</option>
+                }
+            </InputSelect>
         </div>
     </div>
 
     <button type="submit" class="btn btn-success">Create Incident</button>
-    <button type="button" class="btn btn-secondary" @onclick="@(() => NavigationManager.NavigateTo("/open-reports"))">Cancel</button>
+    <button type="button" class="btn btn-secondary"
+            @onclick="@(() => NavigationManager.NavigateTo("/open-reports"))">Cancel</button>
 </EditForm>
-
 <div class="alert alert-warning mt-3">
-    TODO: Replace raw category/severity ids with dropdowns, validate required lookup data, attach report files, and support many analysts creating incidents from the same report.
+    TODO: Attach selected report files to the new incident.
 </div>
 
 @code {
     [Parameter]
     [SupplyParameterFromQuery(Name = "sourceReportId")]
     public int? ReportId { get; set; }
+    private List<CategoryLookup> categories = [];
+    private List<SeverityLookup> severities = [];
 
     private Incident incident = new()
     {
@@ -91,6 +105,31 @@
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
+    // Load category and severity options from the API so we can populate the dropdowns.
+    private async Task LoadLookups()
+    {
+        try
+        {
+            categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
+            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severities") ?? [];
+
+            if (incident.category_id == 0 && categories.Count > 0)
+            {
+                incident.category_id = categories[0].category_id;
+            }
+
+            if (incident.severity_id == 0 && severities.Count > 0)
+            {
+                incident.severity_id = severities[0].severity_id;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading category/severity options: {ex.Message}";
+        }
+    }
+
+    // If ReportId is provided, we can load the report details to give analysts more context about the incident they're creating.
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -101,12 +140,15 @@
             incident.CreatedByUserId = userId;
         }
 
+        await LoadLookups();
+
         if (ReportId != null)
         {
             await LoadSourceReport();
         }
     }
 
+    // This is a very basic preview that just truncates the report text. 
     private async Task LoadSourceReport()
     {
         try
@@ -119,6 +161,7 @@
         }
     }
 
+    // Add a way to add files to the incident.
     private async Task CreateNewIncident()
     {
         errorMessage = null;
@@ -145,6 +188,8 @@
         }
     }
 
+    // This is a very basic preview that just truncates the report text. In a real application, you might want to include
+    // more information, like the category/severity, or even a thumbnail of an attached file.
     private static string GetReportPreview(string text)
     {
         const int maxLength = 240;

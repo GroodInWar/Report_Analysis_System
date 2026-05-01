@@ -45,13 +45,25 @@ else
         <div class="row">
             <div class="form-group mb-3 col-md-6">
                 <label>Category</label>
-                <InputNumber @bind-Value="incident.category_id" class="form-control" disabled="@(!canEdit)" />
+                <InputSelect TValue="uint" @bind-Value="incident.category_id" class="form-select" disabled="@(!canEdit)">
+                    <option value="0" disabled>Choose a category...</option>
+                    @foreach (var category in categories)
+                    {
+                        <option value="@category.category_id">@category.category_name</option>
+                    }
+                </InputSelect>
                 <div class="form-text">@CategoryLabel</div>
             </div>
 
             <div class="form-group mb-3 col-md-6">
                 <label>Severity</label>
-                <InputNumber @bind-Value="incident.severity_id" class="form-control" disabled="@(!canEdit)" />
+                <InputSelect TValue="uint" @bind-Value="incident.severity_id" class="form-select" disabled="@(!canEdit)">
+                    <option value="0" disabled>Choose a severity...</option>
+                    @foreach (var severity in severities)
+                    {
+                        <option value="@severity.severity_id">@severity.severity_name</option>
+                    }
+                </InputSelect>
                 <div class="form-text">@SeverityLabel</div>
             </div>
         </div>
@@ -166,11 +178,15 @@ else
     [Parameter]
     public int IncidentId { get; set; }
 
+    private List<CategoryLookup> categories = [];
+    private List<SeverityLookup> severities = [];
+
     private IncidentDetail? incident;
     private string? errorMessage;
     private uint? currentUserId;
     private string statusValue = "open";
-    private bool canEdit => incident?.CanEdit ?? incident?.IsOwner ?? (incident != null && currentUserId == incident.CreatedByUserId);
+    private bool canEdit => incident?.CanEdit ?? incident?.IsOwner ?? (incident != null && currentUserId ==
+incident.CreatedByUserId);
     private bool IsResolved => incident?.resolved_at != null;
     private string StatusLabel => IsResolved ? "Resolved" : "Open";
     private string CategoryLabel => string.IsNullOrWhiteSpace(incident?.Category?.category_name)
@@ -183,9 +199,23 @@ else
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
+    private async Task LoadLookups()
+    {
+        try
+        {
+            categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
+            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severities") ?? [];
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading category/severity options: {ex.Message}";
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadCurrentUserId();
+        await LoadLookups();
         await LoadIncident();
     }
 
@@ -270,66 +300,5 @@ else
         }
 
         return string.IsNullOrWhiteSpace(user.username) ? fallback : user.username;
-    }
-
-    private sealed class IncidentDetail
-    {
-        public uint incident_id { get; set; }
-        public uint CreatedByUserId { get; set; }
-        public UserSummary? CreatedByUser { get; set; }
-        public uint category_id { get; set; }
-        public CategorySummary? Category { get; set; }
-        public uint severity_id { get; set; }
-        public SeveritySummary? Severity { get; set; }
-        public string incident_title { get; set; } = "";
-        public string incident_description { get; set; } = "";
-        public DateTime created_at { get; set; }
-        public DateTime updated_at { get; set; }
-        public DateTime? resolved_at { get; set; }
-        public bool? CanEdit { get; set; }
-        public bool? IsOwner { get; set; }
-        public List<ReportSummary> Reports { get; set; } = [];
-        public List<CommentSummary> Comments { get; set; } = [];
-        public List<FileSummary> Files { get; set; } = [];
-    }
-
-    private sealed class UserSummary
-    {
-        public uint user_id { get; set; }
-        public string first_name { get; set; } = "";
-        public string last_name { get; set; } = "";
-        public string username { get; set; } = "";
-    }
-
-    private sealed class CategorySummary
-    {
-        public string category_name { get; set; } = "";
-    }
-
-    private sealed class SeveritySummary
-    {
-        public string severity_name { get; set; } = "";
-    }
-
-    private sealed class ReportSummary
-    {
-        public uint report_id { get; set; }
-        public string title { get; set; } = "";
-        public string status { get; set; } = "";
-        public DateTime submitted_at { get; set; }
-    }
-
-    private sealed class CommentSummary
-    {
-        public uint user_id { get; set; }
-        public UserSummary? User { get; set; }
-        public string comment_text { get; set; } = "";
-        public DateTime created_at { get; set; }
-    }
-
-    private sealed class FileSummary
-    {
-        public string file_name { get; set; } = "";
-        public DateTime uploaded_at { get; set; }
     }
 }

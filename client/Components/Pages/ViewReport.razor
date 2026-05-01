@@ -249,39 +249,4 @@ else
 
         return string.IsNullOrWhiteSpace(user.username) ? fallback : user.username;
     }
-
-    private sealed class ReportDetail : Report
-    {
-        public List<FileSummary> Files { get; set; } = [];
-    }
-
-    private sealed class IncidentDetail : Incident
-    {
-        public List<CommentSummary> Comments { get; set; } = [];
-        public List<FileSummary> Files { get; set; } = [];
-    }
-
-    private sealed class UserSummary
-    {
-        public uint user_id { get; set; }
-        public string first_name { get; set; } = "";
-        public string last_name { get; set; } = "";
-        public string username { get; set; } = "";
-        public string email { get; set; } = "";
-    }
-
-    private sealed class CommentSummary
-    {
-        public uint user_id { get; set; }
-        public UserSummary? User { get; set; }
-        public string comment_text { get; set; } = "";
-        public DateTime created_at { get; set; }
-    }
-
-    private sealed class FileSummary
-    {
-        public string file_name { get; set; } = "";
-        public string file_hash { get; set; } = "";
-        public DateTime uploaded_at { get; set; }
-    }
 }
