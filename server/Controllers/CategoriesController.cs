@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using server.DTOs;
 using server.Data;
 
 namespace server.Controllers;
@@ -31,9 +32,4 @@ public class CategoriesController : ControllerBase
 
         return Ok(categories);
     }
-
-    public sealed record CategoryLookupResponse(
-        uint category_id,
-        string category_name
-    );
 }

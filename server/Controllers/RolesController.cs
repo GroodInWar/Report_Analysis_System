@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using server.Data;
+using server.DTOs;
 
 namespace server.Controllers;
 
@@ -31,9 +32,4 @@ public class RolesController : ControllerBase
 
         return Ok(roles);
     }
-
-    public sealed record RoleLookupResponse(
-        uint role_id,
-        string role_name
-    );
 }
