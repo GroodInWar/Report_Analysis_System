@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `file_analysis_website` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `file_analysis_website`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: localhost    Database: file_analysis_website
@@ -29,6 +31,16 @@ CREATE TABLE `severity` (
   UNIQUE KEY `severity_name` (`severity_name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `severity`
+--
+
+LOCK TABLES `severity` WRITE;
+/*!40000 ALTER TABLE `severity` DISABLE KEYS */;
+INSERT INTO `severity` VALUES (4,'critical'),(3,'high'),(1,'low'),(2,'medium');
+/*!40000 ALTER TABLE `severity` ENABLE KEYS */;
+UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -39,4 +51,4 @@ CREATE TABLE `severity` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-04-30 19:23:56
+-- Dump completed
