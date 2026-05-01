@@ -204,7 +204,7 @@ incident.CreatedByUserId);
         try
         {
             categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
-            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severities") ?? [];
+            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severity") ?? [];
         }
         catch (Exception ex)
         {

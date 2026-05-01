@@ -111,7 +111,7 @@
         try
         {
             categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
-            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severities") ?? [];
+            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severity") ?? [];
 
             if (incident.category_id == 0 && categories.Count > 0)
             {
