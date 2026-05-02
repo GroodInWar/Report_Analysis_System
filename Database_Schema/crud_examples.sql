@@ -1,0 +1,5 @@
+-- TODO: Add select, update, and delete examples for every table:
+-- roles, users, categories, severity, incidents, reports, files,
+-- comments, report_files, and incident_files.
+--
+-- Keep examples FK-safe and runnable after Database_Schema/full_database_build.sql.

@@ -148,6 +148,9 @@ public class AuthController : ControllerBase
         });
     }
 
+    // TODO: Add admin-only user management endpoints:
+    // select users, update user profile/role fields, and delete or deactivate users.
+
     private string CreateJwtToken(User user, string role)
     {   
         // https://www.c-sharpcorner.com/article/jwt-token-creation-authentication-and-authorization-in-asp-net-core-6-0-with-po/

@@ -21,15 +21,113 @@ public class IncidentsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<Incident>>> GetAll()
+    public async Task<ActionResult<object>> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        [FromQuery] uint? categoryId = null,
+        [FromQuery] uint? severityId = null,
+        [FromQuery] uint? createdByUserId = null,
+        [FromQuery] bool? resolved = null,
+        [FromQuery] string? search = null)
     {
-        // TODO: Add paging, filters, lookup-name projection, and public-safe read-only visibility rules for anonymous visitors.
-        var incidents = await _dbContext.Incidents
-            .AsNoTracking()
-            .OrderByDescending(i => i.updated_at)
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var currentUserId = GetCurrentUserId();
+        var isAuthenticated = User.Identity?.IsAuthenticated == true;
+        var isAnalyst = User.IsInRole("Analyst") || User.IsInRole("analyst");
+
+        var query = _dbContext.Incidents.AsNoTracking();
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(i => i.category_id == categoryId.Value);
+        }
+
+        if (severityId.HasValue)
+        {
+            query = query.Where(i => i.severity_id == severityId.Value);
+        }
+
+        if (createdByUserId.HasValue && isAnalyst)
+        {
+            query = query.Where(i => i.CreatedByUserId == createdByUserId.Value);
+        }
+
+        if (resolved.HasValue)
+        {
+            query = resolved.Value
+                ? query.Where(i => i.resolved_at != null)
+                : query.Where(i => i.resolved_at == null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(i =>
+                EF.Functions.Like(i.incident_title, $"%{term}%") ||
+                (isAuthenticated && EF.Functions.Like(i.incident_description, $"%{term}%")));
+        }
+
+        var totalCount = await query.CountAsync();
+        var skip = (page - 1) * pageSize;
+
+        var incidents = await (
+            from incident in query
+            join category in _dbContext.Categories.AsNoTracking()
+                on incident.category_id equals category.category_id
+            join severity in _dbContext.Severities.AsNoTracking()
+                on incident.severity_id equals severity.severity_id
+            join createdByUser in _dbContext.Users.AsNoTracking()
+                on incident.CreatedByUserId equals createdByUser.user_id into createdByUsers
+            from createdByUser in createdByUsers.DefaultIfEmpty()
+            orderby incident.updated_at descending, incident.incident_id descending
+            select new
+            {
+                incident.incident_id,
+                CreatedByUserId = isAuthenticated ? incident.CreatedByUserId : (uint?)null,
+                CreatedByUser = isAuthenticated && createdByUser != null
+                    ? new
+                    {
+                        createdByUser.user_id,
+                        createdByUser.first_name,
+                        createdByUser.last_name,
+                        createdByUser.username
+                    }
+                    : null,
+                incident.category_id,
+                Category = new
+                {
+                    category.category_id,
+                    category.category_name
+                },
+                incident.severity_id,
+                Severity = new
+                {
+                    severity.severity_id,
+                    severity.severity_name
+                },
+                incident.incident_title,
+                incident_description = isAuthenticated ? incident.incident_description : null,
+                incident.created_at,
+                incident.updated_at,
+                incident.resolved_at,
+                CanEdit = currentUserId.HasValue && incident.CreatedByUserId == currentUserId.Value,
+                IsOwner = currentUserId.HasValue && incident.CreatedByUserId == currentUserId.Value,
+                IsReadOnly = !isAuthenticated
+            })
+            .Skip(skip)
+            .Take(pageSize)
             .ToListAsync();
 
-        return Ok(incidents);
+        return Ok(new
+        {
+            page,
+            pageSize,
+            totalCount,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
+            items = incidents
+        });
     }
 
     [HttpGet("{id}")]
@@ -186,6 +284,9 @@ public class IncidentsController : ControllerBase
 
         return NoContent();
     }
+
+    // TODO: Add an analyst/admin delete endpoint for incidents and define expected behavior
+    // for linked reports, comments, and incident_files.
 
     private uint? GetCurrentUserId()
     {

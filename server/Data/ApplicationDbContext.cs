@@ -17,8 +17,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<Severity> Severities { get; set; }
     public DbSet<Category> Categories { get; set; }
 
+    public DbSet<Comment> Comments { get; set; }
 
+    public DbSet<Shared.Models.File> Files { get; set; }
 
+    public DbSet<Report_File> ReportFiles { get; set; }
+
+    public DbSet<Incident_File> IncidentFiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -136,6 +141,116 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(i => i.CreatedByUserId)
                 .HasPrincipalKey(u => u.user_id)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Shared.Models.File>(entity =>
+        {
+            entity.ToTable("files", table =>
+            {
+                table.HasCheckConstraint(
+                    "ck_files_file_hash_sha256",
+                    "CHAR_LENGTH(`file_hash`) = 64 AND `file_hash` REGEXP '^[0-9A-Fa-f]{64}$'");
+            });
+            entity.HasKey(f => f.file_id);
+            entity.Property(f => f.file_name)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(f => f.file_path)
+                .IsRequired()
+                .HasMaxLength(500);
+            entity.Property(f => f.file_hash)
+                .IsRequired()
+                .HasColumnType("char(64)")
+                .HasMaxLength(64)
+                .IsFixedLength();
+            entity.Property(f => f.uploaded_at)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<Comment>(entity =>
+        {
+            entity.ToTable("comments", table =>
+            {
+                table.HasTrigger("trg_comments_before_insert_prevent_resolved_incident");
+            });
+            entity.HasKey(c => c.comment_id);
+            entity.Property(c => c.incident_id)
+                .IsRequired();
+            entity.Property(c => c.user_id)
+                .IsRequired();
+            entity.Property(c => c.comment_text)
+                .IsRequired();
+            entity.Property(c => c.created_at)
+                .IsRequired();
+            entity.Property(c => c.updated_at)
+                .IsRequired();
+
+            entity.HasIndex(c => c.incident_id)
+                .HasDatabaseName("fk_comments_incident");
+            entity.HasIndex(c => c.user_id)
+                .HasDatabaseName("fk_comments_user");
+
+            entity.HasOne(c => c.Incident)
+                .WithMany()
+                .HasForeignKey(c => c.incident_id)
+                .HasPrincipalKey(i => i.incident_id)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.user_id)
+                .HasPrincipalKey(u => u.user_id)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Report_File>(entity =>
+        {
+            entity.ToTable("report_files");
+            entity.HasKey(rf => new { rf.report_id, rf.file_id });
+
+            entity.Property(rf => rf.report_id)
+                .IsRequired();
+            entity.Property(rf => rf.file_id)
+                .IsRequired();
+            entity.HasIndex(rf => rf.file_id)
+                .HasDatabaseName("fk_report_files_file");
+
+            entity.HasOne(rf => rf.Report)
+                .WithMany()
+                .HasForeignKey(rf => rf.report_id)
+                .HasPrincipalKey(r => r.report_id)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(rf => rf.File)
+                .WithMany()
+                .HasForeignKey(rf => rf.file_id)
+                .HasPrincipalKey(f => f.file_id)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Incident_File>(entity =>
+        {
+            entity.ToTable("incident_files");
+            entity.HasKey(ifile => new { ifile.incident_id, ifile.file_id });
+
+            entity.Property(ifile => ifile.incident_id)
+                .IsRequired();
+            entity.Property(ifile => ifile.file_id)
+                .IsRequired();
+            entity.HasIndex(ifile => ifile.file_id)
+                .HasDatabaseName("fk_incident_files_file");
+
+            entity.HasOne(ifile => ifile.Incident)
+                .WithMany()
+                .HasForeignKey(ifile => ifile.incident_id)
+                .HasPrincipalKey(i => i.incident_id)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ifile => ifile.File)
+                .WithMany()
+                .HasForeignKey(ifile => ifile.file_id)
+                .HasPrincipalKey(f => f.file_id)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Role>(entity =>

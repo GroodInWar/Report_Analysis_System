@@ -1,0 +1,19 @@
+-- TODO: Replace the split MySQL dump files with one ordered build script that can recreate
+-- the full database from scratch.
+--
+-- Required order:
+-- 1. Create schema.
+-- 2. Create tables in FK-safe order:
+--    roles, users, categories, severity, incidents, reports, files,
+--    comments, report_files, incident_files.
+-- 3. Create views, including vw_incident_dashboard and at least one of:
+--    vw_report_queue, vw_user_activity_summary, vw_file_evidence_summary.
+-- 4. Create stored procedures, including create_incident_from_report and at least one of:
+--    close_incident, assign_report_to_incident, add_comment_to_incident.
+-- 5. Create functions, keeping get_incident_status() and adding or expanding one more complex
+--    function such as get_incident_age_days() or get_severity_rank().
+-- 6. Create triggers, keeping reports_before_update_validate_status and adding at least one more:
+--    analyst/admin incident creation validation, resolved-incident comment prevention,
+--    incident/report update audit, or file hash validation.
+-- 7. Insert well-structured sample data for every table.
+-- 8. Add select/update/delete examples for every table, either here or in a companion examples script.

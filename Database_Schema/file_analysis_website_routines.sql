@@ -67,6 +67,13 @@ SET character_set_client = @saved_cs_client;
 --
 -- Dumping routines for database 'file_analysis_website'
 --
+-- TODO: Add more database reporting objects:
+-- views for report queues, user activity summaries, or file evidence summaries;
+-- aggregation views/queries for counts by severity/category/status/user;
+-- procedures such as close_incident, assign_report_to_incident, or add_comment_to_incident;
+-- functions such as get_incident_age_days() or get_severity_rank();
+-- triggers for incident creator role validation, resolved-incident comment prevention,
+-- update auditing, or file hash validation.
 /*!50003 DROP FUNCTION IF EXISTS `get_incident_status` */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
