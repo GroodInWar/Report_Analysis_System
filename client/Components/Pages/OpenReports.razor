@@ -40,8 +40,16 @@ else
                     <td>@report.submitted_at.ToString("g")</td>
                     <td>@report.updated_at?.ToString("g")</td>
                     <td>
-                        <button @onclick="@(() => ViewReport(report.report_id))" class="btn btn-info">View</button>
-                        <button @onclick="@(() => OpenIncident(report.report_id))" class="btn btn-success">Open Incident</button>
+                        <div class="btn-group btn-group-sm">
+                            <button @onclick="@(() => ViewReport(report.report_id))" class="btn btn-info">View</button>
+                            @if (report.incident_id == null)
+                            {
+                                <button @onclick="@(() => OpenIncident(report.report_id))" class="btn btn-success">Open Incident</button>
+                            }
+                            <button @onclick="@(() => UpdateReportStatus(report.report_id, ReportStatus.under_review))" class="btn btn-outline-primary">Review</button>
+                            <button @onclick="@(() => UpdateReportStatus(report.report_id, ReportStatus.rejected))" class="btn btn-outline-danger">Reject</button>
+                            <button @onclick="@(() => UpdateReportStatus(report.report_id, ReportStatus.closed))" class="btn btn-outline-secondary">Close</button>
+                        </div>
                     </td>
                 </tr>
             }
@@ -89,9 +97,25 @@ else
             }
             else
             {
-                <div class="alert alert-secondary mb-0">
+                <div class="alert alert-secondary">
                     No incident is currently linked to this report.
                 </div>
+
+                @if (linkableIncidents.Count > 0)
+                {
+                    <div class="input-group">
+                        <select class="form-select" @bind="selectedIncidentToLink">
+                            <option value="0">Choose an existing incident...</option>
+                            @foreach (var incident in linkableIncidents)
+                            {
+                                <option value="@incident.incident_id">#@incident.incident_id @incident.incident_title</option>
+                            }
+                        </select>
+                        <button type="button" class="btn btn-outline-primary" @onclick="LinkSelectedReportToIncident">
+                            Link Report
+                        </button>
+                    </div>
+                }
             }
         </div>
     }
@@ -101,6 +125,8 @@ else
     private List<Report>? openReports;
     private Report? selectedReport;
     private Incident? linkedIncident;
+    private List<IncidentListItem> linkableIncidents = [];
+    private uint selectedIncidentToLink;
     private string? errorMessage;
     private string? linkedIncidentError;
     private bool linkedIncidentLoading;
@@ -108,6 +134,12 @@ else
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadReports();
+        await LoadLinkableIncidents();
+    }
+
+    private async Task LoadReports()
     {
         try
         {
@@ -121,6 +153,21 @@ else
         {
             errorMessage = $"Error loading open reports: {ex.Message}";
             openReports = [];
+        }
+    }
+
+    private async Task LoadLinkableIncidents()
+    {
+        try
+        {
+            var response = await ApiClient.GetFromJsonAsync<PagedIncidentResponse>("api/incidents?pageSize=100&resolved=false");
+            linkableIncidents = response?.items ?? [];
+            selectedIncidentToLink = linkableIncidents.FirstOrDefault()?.incident_id ?? 0;
+        }
+        catch
+        {
+            linkableIncidents = [];
+            selectedIncidentToLink = 0;
         }
     }
 
@@ -166,10 +213,64 @@ else
         selectedReport = null;
         linkedIncident = null;
         linkedIncidentError = null;
+        selectedIncidentToLink = linkableIncidents.FirstOrDefault()?.incident_id ?? 0;
     }
 
     private void OpenIncident(uint reportId)
     {
         NavigationManager.NavigateTo($"/incidents/create?sourceReportId={reportId}");
+    }
+
+    private async Task UpdateReportStatus(uint reportId, ReportStatus status)
+    {
+        try
+        {
+            var response = await ApiClient.PatchAsJsonAsync($"api/reports/{reportId}/status", new { status });
+            response.EnsureSuccessStatusCode();
+            await LoadReports();
+
+            if (selectedReport?.report_id == reportId)
+            {
+                await ViewReport(reportId);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating report status: {ex.Message}";
+        }
+    }
+
+    private async Task LinkSelectedReportToIncident()
+    {
+        if (selectedReport == null || selectedIncidentToLink == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await ApiClient.PostAsync(
+                $"api/reports/{selectedReport.report_id}/link-incident/{selectedIncidentToLink}",
+                content: null);
+            response.EnsureSuccessStatusCode();
+
+            await LoadReports();
+            await ViewReport(selectedReport.report_id);
+        }
+        catch (Exception ex)
+        {
+            linkedIncidentError = $"Error linking report to incident: {ex.Message}";
+        }
+    }
+
+    private sealed class PagedIncidentResponse
+    {
+        public List<IncidentListItem> items { get; set; } = [];
+    }
+
+    private sealed class IncidentListItem
+    {
+        public uint incident_id { get; set; }
+        public string incident_title { get; set; } = "";
     }
 }

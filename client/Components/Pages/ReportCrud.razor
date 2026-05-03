@@ -8,8 +8,6 @@
 @inject AuthService AuthService
 @inject AuthenticationStateProvider AuthStateProvider
 
-@* TODO: Extend report management so select/update/delete coverage includes attached files through report_files links. *@
-
 <h3>Reports</h3>
 <AuthorizeView>
     <Authorized>
@@ -94,6 +92,43 @@
                         }
                     </div>
 
+                    @if (isEditing)
+                    {
+                        <div class="form-group mt-3">
+                            <label>Attached Files</label>
+                            @if (attachedFiles.Count == 0)
+                            {
+                                <p><em>No files are attached to this report.</em></p>
+                            }
+                            else
+                            {
+                                <ul class="list-group">
+                                    @foreach (var file in attachedFiles)
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center gap-3">
+                                            <span>
+                                                <strong>@file.file_name</strong>
+                                                <small class="text-muted d-block">Uploaded @file.uploaded_at.ToString("g")</small>
+                                            </span>
+                                            <span class="btn-group">
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-sm"
+                                                        @onclick="@(() => RemoveReportFileLink(file.file_id))">
+                                                    Remove
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-danger btn-sm"
+                                                        @onclick="@(() => DeleteStoredFile(file.file_id))">
+                                                    Delete File
+                                                </button>
+                                            </span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+
                     @if (!string.IsNullOrEmpty(errorMessage))
                     {
                         <div style="color: red; margin: 10px 0;">@errorMessage</div>
@@ -123,6 +158,7 @@
     private string? errorMessage;
     private uint? currentUserId;
     private readonly List<IBrowserFile> selectedFiles = [];
+    private List<FileSummary> attachedFiles = [];
     private const long MaxUploadBytes = 25 * 1024 * 1024;
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
@@ -184,20 +220,38 @@
         isEditing = false;
         errorMessage = null;
         selectedFiles.Clear();
+        attachedFiles = [];
     }
 
-    private void EditReport(Report report)
+    private async Task EditReport(Report report)
     {
-        currentReport = new Report
+        try
         {
-            report_id = report.report_id,
-            submitted_by_user_id = report.submitted_by_user_id,
-            title = report.title,
-            report_text = report.report_text,
-            status = report.status,
-            submitted_at = report.submitted_at,
-            updated_at = DateTime.UtcNow
-        };
+            var detail = await ApiClient.GetFromJsonAsync<ReportDetail>($"api/reports/{report.report_id}");
+            if (detail == null)
+            {
+                errorMessage = "Unable to load report details.";
+                return;
+            }
+
+            currentReport = new Report
+            {
+                report_id = detail.report_id,
+                submitted_by_user_id = detail.submitted_by_user_id,
+                title = detail.title,
+                report_text = detail.report_text,
+                status = detail.status,
+                submitted_at = detail.submitted_at,
+                updated_at = DateTime.UtcNow
+            };
+
+            attachedFiles = detail.Files;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading report details: {ex.Message}";
+            return;
+        }
 
         showForm = true;
         isEditing = true;
@@ -259,6 +313,7 @@
         showForm = false;
         errorMessage = null;
         selectedFiles.Clear();
+        attachedFiles = [];
     }
 
     private void OnFilesSelected(InputFileChangeEventArgs args)
@@ -288,6 +343,34 @@
 
             var response = await ApiClient.PostAsync($"api/files/upload?reportId={reportId}", content);
             response.EnsureSuccessStatusCode();
+        }
+    }
+
+    private async Task RemoveReportFileLink(uint fileId)
+    {
+        try
+        {
+            var response = await ApiClient.DeleteAsync($"api/ReportFiles/{currentReport.report_id}/{fileId}");
+            response.EnsureSuccessStatusCode();
+            attachedFiles.RemoveAll(file => file.file_id == fileId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error removing file from report: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteStoredFile(uint fileId)
+    {
+        try
+        {
+            var response = await ApiClient.DeleteAsync($"api/files/{fileId}");
+            response.EnsureSuccessStatusCode();
+            attachedFiles.RemoveAll(file => file.file_id == fileId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting file: {ex.Message}";
         }
     }
 

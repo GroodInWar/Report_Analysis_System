@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,6 +18,7 @@ public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IConfiguration _configuration;
+    private readonly PasswordHasher<User> _passwordHasher = new();
 
     private const string ErrorRetrievingUsersMessage = "An error occurred while retrieving users.";
 
@@ -64,11 +66,11 @@ public class AuthController : ControllerBase
             last_name = request.LastName,
             username = request.Username,
             email = request.Email,
-            password_hash = request.Password, // The client is responsible for hashing the password before sending.
             role_id = defaultRoleId ?? 2, // Assign a default role ID, or handle the case where it doesn't exist.
             created_at = DateTime.UtcNow,
             updated_at = DateTime.UtcNow
         };
+        user.password_hash = _passwordHasher.HashPassword(user, request.Password);
 
         _dbContext.Users.Add(user);
         await _dbContext.SaveChangesAsync();
@@ -95,7 +97,7 @@ public class AuthController : ControllerBase
 
         var user = _dbContext.Users.FirstOrDefault(u => u.email == request.EmailOrUsername || u.username == request.EmailOrUsername);
 
-        if (user == null || user.password_hash != request.Password)
+        if (user == null || !VerifyPassword(user, request.Password))
         {
             return Unauthorized("Invalid email/username or password.");
         }
@@ -342,5 +344,28 @@ public class AuthController : ControllerBase
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private bool VerifyPassword(User user, string password)
+    {
+        var result = _passwordHasher.VerifyHashedPassword(user, user.password_hash, password);
+        if (result == PasswordVerificationResult.SuccessRehashNeeded)
+        {
+            user.password_hash = _passwordHasher.HashPassword(user, password);
+            return true;
+        }
+
+        if (result == PasswordVerificationResult.Success)
+        {
+            return true;
+        }
+
+        if (user.password_hash == password)
+        {
+            user.password_hash = _passwordHasher.HashPassword(user, password);
+            return true;
+        }
+
+        return false;
     }
 }

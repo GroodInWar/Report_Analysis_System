@@ -55,9 +55,58 @@ public class ReportsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Report>> GetReport(uint id)
+    public async Task<ActionResult<object>> GetReport(uint id)
     {
-        var report = await _dbContext.Reports.FindAsync(id);
+        var report = await _dbContext.Reports
+            .AsNoTracking()
+            .Where(r => r.report_id == id)
+            .Select(r => new
+            {
+                r.report_id,
+                r.submitted_by_user_id,
+                SubmittedByUser = r.SubmittedByUser == null
+                    ? null
+                    : new
+                    {
+                        r.SubmittedByUser.user_id,
+                        r.SubmittedByUser.first_name,
+                        r.SubmittedByUser.last_name,
+                        r.SubmittedByUser.username,
+                        r.SubmittedByUser.email
+                    },
+                r.incident_id,
+                Incident = r.Incident == null
+                    ? null
+                    : new
+                    {
+                        r.Incident.incident_id,
+                        r.Incident.incident_title,
+                        r.Incident.incident_description,
+                        r.Incident.updated_at,
+                        r.Incident.resolved_at
+                    },
+                r.title,
+                r.report_text,
+                r.status,
+                r.submitted_at,
+                r.updated_at,
+                Files = (
+                    from reportFile in _dbContext.ReportFiles.AsNoTracking()
+                    join file in _dbContext.Files.AsNoTracking()
+                        on reportFile.file_id equals file.file_id
+                    where reportFile.report_id == r.report_id
+                    orderby file.uploaded_at descending, file.file_id descending
+                    select new
+                    {
+                        file.file_id,
+                        file.file_name,
+                        file.file_hash,
+                        file.uploaded_at
+                    })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
+
         if (report == null)
         {
             return NotFound();
@@ -131,6 +180,96 @@ public class ReportsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("{id}/status")]
+    [Authorize(Roles = "Analyst,analyst,Admin,admin")]
+    public async Task<IActionResult> UpdateReportStatus(uint id, ReportStatusUpdateRequest request)
+    {
+        if (!Enum.IsDefined(request.status))
+        {
+            return BadRequest("Invalid report status.");
+        }
+
+        var report = await _dbContext.Reports.FindAsync(id);
+        if (report == null)
+        {
+            return NotFound();
+        }
+
+        if (request.status == ReportStatus.linked && report.incident_id == null)
+        {
+            return BadRequest("A report must be linked to an incident before using linked status.");
+        }
+
+        report.status = request.status;
+        report.updated_at = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpPost("{reportId}/link-incident/{incidentId}")]
+    [Authorize(Roles = "Analyst,analyst,Admin,admin")]
+    public async Task<IActionResult> LinkReportToIncident(uint reportId, uint incidentId, [FromQuery] bool copyFiles = true)
+    {
+        var report = await _dbContext.Reports.FindAsync(reportId);
+        if (report == null)
+        {
+            return NotFound("Report not found.");
+        }
+
+        if (report.status is ReportStatus.closed or ReportStatus.rejected)
+        {
+            return BadRequest("Closed or rejected reports cannot be linked to an incident.");
+        }
+
+        var incidentExists = await _dbContext.Incidents
+            .AsNoTracking()
+            .AnyAsync(i => i.incident_id == incidentId);
+        if (!incidentExists)
+        {
+            return NotFound("Incident not found.");
+        }
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        report.incident_id = incidentId;
+        report.status = ReportStatus.linked;
+        report.updated_at = DateTime.UtcNow;
+
+        if (copyFiles)
+        {
+            var reportFileIds = await _dbContext.ReportFiles
+                .AsNoTracking()
+                .Where(rf => rf.report_id == reportId)
+                .Select(rf => rf.file_id)
+                .ToListAsync();
+
+            var existingIncidentFileIds = await _dbContext.IncidentFiles
+                .AsNoTracking()
+                .Where(ifile => ifile.incident_id == incidentId && reportFileIds.Contains(ifile.file_id))
+                .Select(ifile => ifile.file_id)
+                .ToListAsync();
+
+            var existingFileIdSet = existingIncidentFileIds.ToHashSet();
+            foreach (var fileId in reportFileIds)
+            {
+                if (!existingFileIdSet.Contains(fileId))
+                {
+                    _dbContext.IncidentFiles.Add(new Incident_File
+                    {
+                        incident_id = incidentId,
+                        file_id = fileId
+                    });
+                }
+            }
+        }
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return NoContent();
+    }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteReport(uint id)
     {
@@ -166,4 +305,9 @@ public class ReportsController : ControllerBase
     {
         return GetCurrentUserId() == userId;
     }
+}
+
+public class ReportStatusUpdateRequest
+{
+    public ReportStatus status { get; set; }
 }

@@ -135,6 +135,7 @@ public class IncidentsController : ControllerBase
     public async Task<ActionResult<object>> GetIncident(uint id)
     {
         var currentUserId = GetCurrentUserId();
+        var isAuthenticated = User.Identity?.IsAuthenticated == true;
         var incident = await _dbContext.Incidents
             .AsNoTracking()
             .Where(i => i.incident_id == id)
@@ -171,7 +172,7 @@ public class IncidentsController : ControllerBase
                     })
                     .FirstOrDefault(),
                 i.incident_title,
-                i.incident_description,
+                incident_description = isAuthenticated ? i.incident_description : null,
                 i.created_at,
                 i.updated_at,
                 i.resolved_at,
@@ -184,6 +185,42 @@ public class IncidentsController : ControllerBase
                         r.title,
                         status = r.status.ToString(),
                         r.submitted_at
+                    })
+                    .ToList(),
+                Comments = _dbContext.Comments
+                    .AsNoTracking()
+                    .Where(c => c.incident_id == i.incident_id)
+                    .OrderBy(c => c.created_at)
+                    .ThenBy(c => c.comment_id)
+                    .Select(c => new
+                    {
+                        c.user_id,
+                        User = c.User == null
+                            ? null
+                            : new
+                            {
+                                c.User.user_id,
+                                c.User.first_name,
+                                c.User.last_name,
+                                c.User.username,
+                                c.User.email
+                            },
+                        c.comment_text,
+                        c.created_at
+                    })
+                    .ToList(),
+                Files = (
+                    from incidentFile in _dbContext.IncidentFiles.AsNoTracking()
+                    join file in _dbContext.Files.AsNoTracking()
+                        on incidentFile.file_id equals file.file_id
+                    where incidentFile.incident_id == i.incident_id
+                    orderby file.uploaded_at descending, file.file_id descending
+                    select new
+                    {
+                        file.file_id,
+                        file.file_name,
+                        file.file_hash,
+                        file.uploaded_at
                     })
                     .ToList()
             })
@@ -203,6 +240,12 @@ public class IncidentsController : ControllerBase
         }
 
         Report? sourceReport = null;
+
+        var lookupError = await ValidateIncidentLookups(incident.category_id, incident.severity_id);
+        if (lookupError != null)
+        {
+            return BadRequest(lookupError);
+        }
 
         if (sourceReportId != null)
         {
@@ -272,7 +315,12 @@ public class IncidentsController : ControllerBase
             return Forbid();
         }
 
-        // TODO: Validate category/severity ids, add concurrency handling, and restrict fields that are not analyst-editable.
+        var lookupError = await ValidateIncidentLookups(incident.category_id, incident.severity_id);
+        if (lookupError != null)
+        {
+            return BadRequest(lookupError);
+        }
+
         existing.incident_title = incident.incident_title;
         existing.incident_description = incident.incident_description;
         existing.category_id = incident.category_id;
@@ -280,13 +328,64 @@ public class IncidentsController : ControllerBase
         existing.updated_at = DateTime.UtcNow;
         existing.resolved_at = incident.resolved_at;
 
-        await _dbContext.SaveChangesAsync();
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!await _dbContext.Incidents.AnyAsync(i => i.incident_id == id))
+            {
+                return NotFound();
+            }
+
+            throw;
+        }
 
         return NoContent();
     }
 
-    // TODO: Add an analyst/admin delete endpoint for incidents and define expected behavior
-    // for linked reports, comments, and incident_files.
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Analyst,analyst,Admin,admin")]
+    public async Task<IActionResult> DeleteIncident(uint id)
+    {
+        var incident = await _dbContext.Incidents.FindAsync(id);
+        if (incident == null)
+        {
+            return NotFound();
+        }
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        var linkedReports = await _dbContext.Reports
+            .Where(r => r.incident_id == id)
+            .ToListAsync();
+
+        foreach (var report in linkedReports)
+        {
+            report.incident_id = null;
+            if (report.status == ReportStatus.linked)
+            {
+                report.status = ReportStatus.under_review;
+            }
+
+            report.updated_at = DateTime.UtcNow;
+        }
+
+        await _dbContext.Comments
+            .Where(c => c.incident_id == id)
+            .ExecuteDeleteAsync();
+
+        await _dbContext.IncidentFiles
+            .Where(ifile => ifile.incident_id == id)
+            .ExecuteDeleteAsync();
+
+        _dbContext.Incidents.Remove(incident);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return NoContent();
+    }
 
     private uint? GetCurrentUserId()
     {
@@ -297,5 +396,36 @@ public class IncidentsController : ControllerBase
     private bool IsCurrentUser(uint userId)
     {
         return GetCurrentUserId() == userId;
+    }
+
+    private async Task<string?> ValidateIncidentLookups(uint categoryId, uint severityId)
+    {
+        if (categoryId == 0)
+        {
+            return "category_id is required.";
+        }
+
+        if (severityId == 0)
+        {
+            return "severity_id is required.";
+        }
+
+        var categoryExists = await _dbContext.Categories
+            .AsNoTracking()
+            .AnyAsync(c => c.category_id == categoryId);
+        if (!categoryExists)
+        {
+            return "Category does not exist.";
+        }
+
+        var severityExists = await _dbContext.Severities
+            .AsNoTracking()
+            .AnyAsync(s => s.severity_id == severityId);
+        if (!severityExists)
+        {
+            return "Severity does not exist.";
+        }
+
+        return null;
     }
 }

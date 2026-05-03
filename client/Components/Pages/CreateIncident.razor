@@ -79,13 +79,32 @@
         </div>
     </div>
 
+    @if (sourceReport?.Files.Count > 0)
+    {
+        <section class="mb-3">
+            <label class="form-label">Copy Report Files</label>
+            <div class="list-group">
+                @foreach (var file in sourceReport.Files)
+                {
+                    <label class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <input class="form-check-input me-2"
+                                   type="checkbox"
+                                   checked="@selectedSourceFileIds.Contains(file.file_id)"
+                                   @onchange="eventArgs => ToggleSourceFile(file.file_id, eventArgs)" />
+                            @file.file_name
+                        </span>
+                        <small class="text-muted">@file.uploaded_at.ToString("g")</small>
+                    </label>
+                }
+            </div>
+        </section>
+    }
+
     <button type="submit" class="btn btn-success">Create Incident</button>
     <button type="button" class="btn btn-secondary"
             @onclick="@(() => NavigationManager.NavigateTo("/open-reports"))">Cancel</button>
 </EditForm>
-<div class="alert alert-warning mt-3">
-    TODO: Attach selected report files to the new incident.
-</div>
 
 @code {
     [Parameter]
@@ -101,8 +120,9 @@
         updated_at = DateTime.UtcNow
     };
     private string? errorMessage;
-    private Report? sourceReport;
+    private ReportDetail? sourceReport;
     private string? sourceReportError;
+    private HashSet<uint> selectedSourceFileIds = [];
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
@@ -154,7 +174,11 @@
     {
         try
         {
-            sourceReport = await ApiClient.GetFromJsonAsync<Report>($"api/reports/{ReportId}");
+            sourceReport = await ApiClient.GetFromJsonAsync<ReportDetail>($"api/reports/{ReportId}");
+            selectedSourceFileIds = sourceReport?.Files
+                .Select(file => file.file_id)
+                .Where(fileId => fileId != 0)
+                .ToHashSet() ?? [];
         }
         catch (Exception ex)
         {
@@ -162,7 +186,6 @@
         }
     }
 
-    // Add a way to add files to the incident.
     private async Task CreateNewIncident()
     {
         errorMessage = null;
@@ -181,11 +204,46 @@
             }
 
             var created = await response.Content.ReadFromJsonAsync<Incident>();
+            if (created != null && selectedSourceFileIds.Count > 0)
+            {
+                await LinkSelectedSourceFiles(created.incident_id);
+            }
+
             NavigationManager.NavigateTo(created == null ? "/incidents" : $"/incidents/{created.incident_id}");
         }
         catch (Exception ex)
         {
             errorMessage = $"Error creating incident: {ex.Message}";
+        }
+    }
+
+    private async Task LinkSelectedSourceFiles(uint incidentId)
+    {
+        foreach (var fileId in selectedSourceFileIds)
+        {
+            var response = await ApiClient.PostAsJsonAsync("api/IncidentFiles", new Incident_File
+            {
+                incident_id = incidentId,
+                file_id = fileId
+            });
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Incident was created, but file #{fileId} could not be linked: {response.ReasonPhrase}");
+            }
+        }
+    }
+
+    private void ToggleSourceFile(uint fileId, ChangeEventArgs eventArgs)
+    {
+        var isChecked = eventArgs.Value is bool value && value;
+        if (isChecked)
+        {
+            selectedSourceFileIds.Add(fileId);
+        }
+        else
+        {
+            selectedSourceFileIds.Remove(fileId);
         }
     }
 

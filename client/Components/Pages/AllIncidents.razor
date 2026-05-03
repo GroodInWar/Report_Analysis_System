@@ -3,8 +3,6 @@
 @inject IHttpClientFactory HttpFactory
 @inject NavigationManager NavigationManager
 
-@* TODO: Expose analyst incident CRUD here or in a dedicated admin/analyst incident page, including delete. *@
-
 <h3>All Incidents</h3>
 
 @if (!string.IsNullOrEmpty(errorMessage))
@@ -37,8 +35,8 @@ else
             {
                 <tr>
                     <td>@incident.incident_title</td>
-                    <td>@incident.category_id</td>
-                    <td>@incident.severity_id</td>
+                    <td>@(incident.Category?.category_name ?? incident.category_id.ToString())</td>
+                    <td>@(incident.Severity?.severity_name ?? incident.severity_id.ToString())</td>
                     <td>@incident.created_at.ToString("g")</td>
                     <td>@incident.updated_at.ToString("g")</td>
                     <td>
@@ -50,12 +48,8 @@ else
     </table>
 }
 
-<div class="alert alert-warning">
-    TODO: Show friendly category/severity names, filtering, ownership indicators, and public-safe incident summaries for visitors who are not logged in.
-</div>
-
 @code {
-    private List<Incident>? incidents;
+    private List<IncidentListItem>? incidents;
     private string? errorMessage;
 
     private HttpClient ApiClient => HttpFactory.CreateClient("Api");
@@ -64,12 +58,41 @@ else
     {
         try
         {
-            incidents = await ApiClient.GetFromJsonAsync<List<Incident>>("api/incidents") ?? [];
+            var response = await ApiClient.GetFromJsonAsync<PagedIncidentResponse>("api/incidents");
+            incidents = response?.items ?? [];
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading incidents: {ex.Message}";
             incidents = [];
         }
+    }
+
+    private sealed class PagedIncidentResponse
+    {
+        public int page { get; set; }
+        public int pageSize { get; set; }
+        public int totalCount { get; set; }
+        public int totalPages { get; set; }
+        public List<IncidentListItem> items { get; set; } = [];
+    }
+
+    private sealed class IncidentListItem
+    {
+        public uint incident_id { get; set; }
+        public uint? CreatedByUserId { get; set; }
+        public UserSummary? CreatedByUser { get; set; }
+        public uint category_id { get; set; }
+        public CategoryLookup? Category { get; set; }
+        public uint severity_id { get; set; }
+        public SeverityLookup? Severity { get; set; }
+        public string incident_title { get; set; } = "";
+        public string? incident_description { get; set; }
+        public DateTime created_at { get; set; }
+        public DateTime updated_at { get; set; }
+        public DateTime? resolved_at { get; set; }
+        public bool CanEdit { get; set; }
+        public bool IsOwner { get; set; }
+        public bool IsReadOnly { get; set; }
     }
 }
