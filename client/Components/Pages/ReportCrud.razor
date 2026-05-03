@@ -76,6 +76,23 @@
                         <InputTextArea @bind-Value="currentReport.report_text" class="form-control" />
                         <ValidationMessage For="@(() => currentReport.report_text)" />
                     </div>
+                    @*  
+                        https://learn.microsoft.com/en-us/aspnet/core/mvc/models/file-uploads 
+                        https://learn.microsoft.com/en-us/aspnet/core/blazor/file-uploads
+                     *@
+                    <div class="form-group mt-3">
+                        <label>Files</label>
+                        <InputFile OnChange="@OnFilesSelected" multiple class="form-control" />
+                        @if (selectedFiles.Count > 0)
+                        {
+                            <ul class="mt-2">
+                                @foreach (var file in selectedFiles)
+                                {
+                                    <li>@file.Name (@FormatFileSize(file.Size))</li>
+                                }
+                            </ul>
+                        }
+                    </div>
 
                     @if (!string.IsNullOrEmpty(errorMessage))
                     {
@@ -105,6 +122,8 @@
     private bool isEditing;
     private string? errorMessage;
     private uint? currentUserId;
+    private readonly List<IBrowserFile> selectedFiles = [];
+    private const long MaxUploadBytes = 25 * 1024 * 1024;
 
     private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
@@ -164,6 +183,7 @@
         showForm = true;
         isEditing = false;
         errorMessage = null;
+        selectedFiles.Clear();
     }
 
     private void EditReport(Report report)
@@ -182,6 +202,7 @@
         showForm = true;
         isEditing = true;
         errorMessage = null;
+        selectedFiles.Clear();
     }
 
     private async Task SaveReport()
@@ -192,15 +213,27 @@
         {
             if (isEditing)
             {
-                await ApiClient.PutAsJsonAsync($"api/reports/{currentReport.report_id}", currentReport);
+                var response = await ApiClient.PutAsJsonAsync($"api/reports/{currentReport.report_id}", currentReport);
+                response.EnsureSuccessStatusCode();
+                await UploadSelectedFiles(currentReport.report_id);
             }
             else
             {
-                await ApiClient.PostAsJsonAsync("api/reports", currentReport);
+                var response = await ApiClient.PostAsJsonAsync("api/reports", currentReport);
+                response.EnsureSuccessStatusCode();
+
+                var createdReport = await response.Content.ReadFromJsonAsync<Report>();
+                if (createdReport == null)
+                {
+                    throw new InvalidOperationException("The report was saved, but the server did not return it.");
+                }
+
+                await UploadSelectedFiles(createdReport.report_id);
             }
 
             await LoadReports();
             showForm = false;
+            selectedFiles.Clear();
         }
         catch (Exception ex)
         {
@@ -225,5 +258,51 @@
     {
         showForm = false;
         errorMessage = null;
+        selectedFiles.Clear();
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        selectedFiles.Clear();
+        selectedFiles.AddRange(args.GetMultipleFiles());
+    }
+
+    private async Task UploadSelectedFiles(uint reportId)
+    {
+        foreach (var selectedFile in selectedFiles)
+        {
+            if (selectedFile.Size > MaxUploadBytes)
+            {
+                throw new InvalidOperationException($"{selectedFile.Name} exceeds the 25 MB upload limit.");
+            }
+
+            using var content = new MultipartFormDataContent();
+            using var stream = selectedFile.OpenReadStream(MaxUploadBytes);
+            using var fileContent = new StreamContent(stream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(selectedFile.ContentType)
+                    ? "application/octet-stream"
+                    : selectedFile.ContentType);
+
+            content.Add(fileContent, "uploadedFile", selectedFile.Name);
+
+            var response = await ApiClient.PostAsync($"api/files/upload?reportId={reportId}", content);
+            response.EnsureSuccessStatusCode();
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / 1024d / 1024d:F1} MB";
+        }
+
+        if (bytes >= 1024)
+        {
+            return $"{bytes / 1024d:F1} KB";
+        }
+
+        return $"{bytes} B";
     }
 }
