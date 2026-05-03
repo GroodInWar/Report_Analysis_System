@@ -1,3 +1,285 @@
-@* TODO: Add a dashboard page that displays multiple aggregation reports:
-   incident count by severity, incident count by category, report count by status,
-   reports submitted per user, average time to resolution, and file count per incident. *@
+@page "/dashboard"
+@using client.Services
+@layout MainLayout
+@inject AuthService AuthService
+
+<h3>Dashboard</h3>
+
+<AuthorizeView Roles="Analyst,analyst,Admin,admin">
+   <Authorized>
+      @if (!string.IsNullOrEmpty(errorMessage))
+      {
+         <div class="alert alert-danger">@errorMessage</div>
+      }
+      else if (isLoading)
+      {
+         <p><em>Loading dashboard...</em></p>
+      }
+      else
+      {
+         <div class="row g-3 mb-4">
+            <div class="col-md-4">
+               <div class="border rounded p-3 h-100">
+                  <div class="text-muted small">Resolved Incidents</div>
+                  <div class="fs-3 fw-semibold">@resolutionSummary.ResolvedIncidentCount</div>
+               </div>
+            </div>
+            <div class="col-md-4">
+               <div class="border rounded p-3 h-100">
+                  <div class="text-muted small">Average Resolution Time</div>
+                  <div class="fs-3 fw-semibold">@FormatAverageResolutionTime()</div>
+               </div>
+            </div>
+            <div class="col-md-4">
+               <div class="border rounded p-3 h-100">
+                  <div class="text-muted small">Total Reported Files On Incidents</div>
+                  <div class="fs-3 fw-semibold">@fileCounts.Sum(item => item.FileCount)</div>
+               </div>
+            </div>
+         </div>
+
+         <div class="row g-4">
+            <div class="col-lg-6">
+               <h4>Incidents by Severity</h4>
+               @if (incidentsBySeverity.Count == 0)
+               {
+                  <p><em>No incident severity data available.</em></p>
+               }
+               else
+               {
+                  <table class="table table-sm">
+                     <thead>
+                        <tr>
+                           <th>Severity</th>
+                           <th class="text-end">Count</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @foreach (var row in incidentsBySeverity)
+                        {
+                           <tr>
+                              <td>@row.Severity</td>
+                              <td class="text-end">@row.Count</td>
+                           </tr>
+                        }
+                     </tbody>
+                  </table>
+               }
+            </div>
+
+            <div class="col-lg-6">
+               <h4>Incidents by Category</h4>
+               @if (incidentsByCategory.Count == 0)
+               {
+                  <p><em>No incident category data available.</em></p>
+               }
+               else
+               {
+                  <table class="table table-sm">
+                     <thead>
+                        <tr>
+                           <th>Category</th>
+                           <th class="text-end">Count</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @foreach (var row in incidentsByCategory)
+                        {
+                           <tr>
+                              <td>@row.Category</td>
+                              <td class="text-end">@row.Count</td>
+                           </tr>
+                        }
+                     </tbody>
+                  </table>
+               }
+            </div>
+
+            <div class="col-lg-6">
+               <h4>Reports by Status</h4>
+               @if (reportsByStatus.Count == 0)
+               {
+                  <p><em>No report status data available.</em></p>
+               }
+               else
+               {
+                  <table class="table table-sm">
+                     <thead>
+                        <tr>
+                           <th>Status</th>
+                           <th class="text-end">Count</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @foreach (var row in reportsByStatus)
+                        {
+                           <tr>
+                              <td>@row.Status</td>
+                              <td class="text-end">@row.Count</td>
+                           </tr>
+                        }
+                     </tbody>
+                  </table>
+               }
+            </div>
+
+            <div class="col-lg-6">
+               <h4>Reports Submitted by User</h4>
+               @if (userReportCounts.Count == 0)
+               {
+                  <p><em>No user report data available.</em></p>
+               }
+               else
+               {
+                  <table class="table table-sm">
+                     <thead>
+                        <tr>
+                           <th>User</th>
+                           <th class="text-end">Reports</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @foreach (var row in userReportCounts)
+                        {
+                           <tr>
+                              <td>@row.Username</td>
+                              <td class="text-end">@row.Count</td>
+                           </tr>
+                        }
+                     </tbody>
+                  </table>
+               }
+            </div>
+
+            <div class="col-12">
+               <h4>File Count per Incident</h4>
+               @if (fileCounts.Count == 0)
+               {
+                  <p><em>No incident file data available.</em></p>
+               }
+               else
+               {
+                  <table class="table table-sm">
+                     <thead>
+                        <tr>
+                           <th>Incident</th>
+                           <th class="text-end">Files</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @foreach (var row in fileCounts)
+                        {
+                           <tr>
+                              <td>#@row.IncidentId: @row.IncidentTitle</td>
+                              <td class="text-end">@row.FileCount</td>
+                           </tr>
+                        }
+                     </tbody>
+                  </table>
+               }
+            </div>
+         </div>
+      }
+   </Authorized>
+   <NotAuthorized>
+      <p>You need analyst or admin access to view the dashboard.</p>
+   </NotAuthorized>
+</AuthorizeView>
+
+@code {
+   private bool isLoading = true;
+   private string? errorMessage;
+
+   private List<SeverityCount> incidentsBySeverity = [];
+   private List<CategoryCount> incidentsByCategory = [];
+   private List<StatusCount> reportsByStatus = [];
+   private List<UserReportCount> userReportCounts = [];
+   private ResolutionSummary resolutionSummary = new();
+   private List<IncidentFileCount> fileCounts = [];
+
+   private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
+
+   protected override async Task OnInitializedAsync()
+   {
+      try
+      {
+         var severityTask = ApiClient.GetFromJsonAsync<List<SeverityCount>>("api/dashboard/incidents-by-severity");
+         var categoryTask = ApiClient.GetFromJsonAsync<List<CategoryCount>>("api/dashboard/incidents-by-category");
+         var statusTask = ApiClient.GetFromJsonAsync<List<StatusCount>>("api/dashboard/reports-by-status");
+         var userReportTask = ApiClient.GetFromJsonAsync<List<UserReportCount>>("api/dashboard/user-report-counts");
+         var resolutionTask = ApiClient.GetFromJsonAsync<ResolutionSummary>("api/dashboard/average-time-to-resolution");
+         var fileCountTask = ApiClient.GetFromJsonAsync<List<IncidentFileCount>>("api/dashboard/file-count-per-incident");
+
+         await Task.WhenAll(severityTask, categoryTask, statusTask, userReportTask, resolutionTask, fileCountTask);
+
+         incidentsBySeverity = severityTask.Result ?? [];
+         incidentsByCategory = categoryTask.Result ?? [];
+         reportsByStatus = statusTask.Result ?? [];
+         userReportCounts = userReportTask.Result ?? [];
+         resolutionSummary = resolutionTask.Result ?? new();
+         fileCounts = fileCountTask.Result ?? [];
+      }
+      catch (Exception ex)
+      {
+         errorMessage = $"Error loading dashboard: {ex.Message}";
+      }
+      finally
+      {
+         isLoading = false;
+      }
+   }
+
+   private string FormatAverageResolutionTime()
+   {
+      if (resolutionSummary.ResolvedIncidentCount == 0)
+      {
+         return "N/A";
+      }
+
+      return resolutionSummary.AverageHours < 24
+          ? $"{resolutionSummary.AverageHours:N1} hours"
+          : $"{resolutionSummary.AverageDays:N1} days";
+   }
+
+   private sealed class SeverityCount
+   {
+      public uint SeverityId { get; set; }
+      public string Severity { get; set; } = string.Empty;
+      public int Count { get; set; }
+   }
+
+   private sealed class CategoryCount
+   {
+      public uint CategoryId { get; set; }
+      public string Category { get; set; } = string.Empty;
+      public int Count { get; set; }
+   }
+
+   private sealed class StatusCount
+   {
+      public string Status { get; set; } = string.Empty;
+      public int Count { get; set; }
+   }
+
+   private sealed class UserReportCount
+   {
+      public uint UserId { get; set; }
+      public string Username { get; set; } = string.Empty;
+      public int Count { get; set; }
+   }
+
+   private sealed class ResolutionSummary
+   {
+      public int ResolvedIncidentCount { get; set; }
+      public double AverageSeconds { get; set; }
+      public double AverageHours { get; set; }
+      public double AverageDays { get; set; }
+   }
+
+   private sealed class IncidentFileCount
+   {
+      public uint IncidentId { get; set; }
+      public string IncidentTitle { get; set; } = string.Empty;
+      public int FileCount { get; set; }
+   }
+}

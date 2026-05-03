@@ -1,2 +1,500 @@
-@* TODO: Add an admin page for insert/select/update/delete coverage across:
-   users, roles, categories, severity, files, comments, report_files, and incident_files. *@
+@page "/admin"
+@page "/admin/users"
+@page "/admin/roles"
+@page "/admin/categories"
+@page "/admin/severity"
+@using client.Services
+@layout MainLayout
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+
+<h3>Admin</h3>
+
+<AuthorizeView Roles="Admin,admin">
+   <Authorized>
+      @if (!string.IsNullOrEmpty(statusMessage))
+      {
+         <div class="alert @statusMessageClass">@statusMessage</div>
+      }
+
+      <div class="btn-group mb-3" role="group" aria-label="Admin sections">
+         <button type="button" class="@GetSectionButtonClass(AdminSection.Users)"
+                 @onclick="@(() => activeSection = AdminSection.Users)">Users</button>
+         <button type="button" class="@GetSectionButtonClass(AdminSection.Roles)"
+                 @onclick="@(() => activeSection = AdminSection.Roles)">Roles</button>
+         <button type="button" class="@GetSectionButtonClass(AdminSection.Categories)"
+                 @onclick="@(() => activeSection = AdminSection.Categories)">Categories</button>
+         <button type="button" class="@GetSectionButtonClass(AdminSection.Severity)"
+                 @onclick="@(() => activeSection = AdminSection.Severity)">Severity</button>
+      </div>
+
+      @if (isLoading)
+      {
+         <p><em>Loading admin data...</em></p>
+      }
+      else if (activeSection == AdminSection.Users)
+      {
+         <h4>Users</h4>
+         @if (users.Count == 0)
+         {
+            <p><em>No users found.</em></p>
+         }
+         else
+         {
+            <table class="table table-sm align-middle">
+               <thead>
+                  <tr>
+                     <th>First</th>
+                     <th>Last</th>
+                     <th>Username</th>
+                     <th>Email</th>
+                     <th>Role</th>
+                     <th>Last Login</th>
+                     <th>Actions</th>
+                  </tr>
+               </thead>
+               <tbody>
+                  @foreach (var user in users)
+                  {
+                     <tr>
+                        <td><input class="form-control form-control-sm" @bind="user.first_name" /></td>
+                        <td><input class="form-control form-control-sm" @bind="user.last_name" /></td>
+                        <td><input class="form-control form-control-sm" @bind="user.username" /></td>
+                        <td><input class="form-control form-control-sm" @bind="user.email" /></td>
+                        <td>
+                           <select class="form-select form-select-sm" @bind="user.role_id">
+                              @foreach (var role in roles)
+                              {
+                                 <option value="@role.role_id">@role.role_name</option>
+                              }
+                           </select>
+                        </td>
+                        <td>@FormatDate(user.last_login_at)</td>
+                        <td>
+                           <button class="btn btn-sm btn-primary me-1" @onclick="@(() => SaveUser(user))">Save</button>
+                           <button class="btn btn-sm btn-danger" @onclick="@(() => DeleteUser(user.user_id))">Delete</button>
+                        </td>
+                     </tr>
+                  }
+               </tbody>
+            </table>
+            <p class="text-muted small">New users are created through registration; admins can edit profile fields, assign
+               roles, and delete users here.</p>
+            }
+         }
+        else if (activeSection == AdminSection.Roles)
+         {
+            <h4>Roles</h4>
+            <div class="row g-2 mb-3">
+               <div class="col-md-6">
+                  <input class="form-control" placeholder="Role name" @bind="newRoleName" />
+               </div>
+               <div class="col-md-auto">
+                  <button class="btn btn-primary" @onclick="CreateRole">Add Role</button>
+               </div>
+            </div>
+            @RenderLookupTable(roles, "role")
+         }
+         else if (activeSection == AdminSection.Categories)
+         {
+            <h4>Categories</h4>
+            <div class="row g-2 mb-3">
+               <div class="col-md-6">
+                  <input class="form-control" placeholder="Category name" @bind="newCategoryName" />
+               </div>
+               <div class="col-md-auto">
+                  <button class="btn btn-primary" @onclick="CreateCategory">Add Category</button>
+               </div>
+            </div>
+            @RenderLookupTable(categories, "category")
+         }
+         else
+         {
+            <h4>Severity</h4>
+            <div class="row g-2 mb-3">
+               <div class="col-md-6">
+                  <input class="form-control" placeholder="Severity name" @bind="newSeverityName" />
+               </div>
+               <div class="col-md-auto">
+                  <button class="btn btn-primary" @onclick="CreateSeverity">Add Severity</button>
+               </div>
+            </div>
+            @RenderLookupTable(severities, "severity")
+         }
+      </Authorized>
+      <NotAuthorized>
+         <p>You need admin access to manage users and lookup values.</p>
+      </NotAuthorized>
+   </AuthorizeView>
+
+@code {
+   private AdminSection activeSection = AdminSection.Users;
+   private bool isLoading = true;
+   private string? statusMessage;
+   private string statusMessageClass = "alert-info";
+
+   private List<AdminUser> users = [];
+   private List<RoleLookup> roles = [];
+   private List<CategoryLookup> categories = [];
+   private List<SeverityLookup> severities = [];
+
+   private string newRoleName = string.Empty;
+   private string newCategoryName = string.Empty;
+   private string newSeverityName = string.Empty;
+
+   private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
+
+   protected override async Task OnInitializedAsync()
+   {
+      SetActiveSectionFromRoute();
+
+      var authState = await AuthService.GetAuthenticationStateAsync();
+      if (!authState.User.IsInRole("Admin") && !authState.User.IsInRole("admin"))
+      {
+         isLoading = false;
+         return;
+      }
+
+      await LoadAll();
+   }
+
+   private async Task LoadAll()
+   {
+      isLoading = true;
+      ClearStatus();
+
+      try
+      {
+         roles = await ApiClient.GetFromJsonAsync<List<RoleLookup>>("api/roles") ?? [];
+         users = await ApiClient.GetFromJsonAsync<List<AdminUser>>("api/auth/users") ?? [];
+         categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
+         severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severity") ?? [];
+      }
+      catch (Exception ex)
+      {
+         SetError($"Error loading admin data: {ex.Message}");
+      }
+      finally
+      {
+         isLoading = false;
+      }
+   }
+
+   private async Task SaveUser(AdminUser user)
+   {
+      var request = new AdminUserUpdateRequest
+      {
+         first_name = user.first_name,
+         last_name = user.last_name,
+         username = user.username,
+         email = user.email,
+         role_id = user.role_id
+      };
+
+      var response = await ApiClient.PutAsJsonAsync($"api/auth/users/{user.user_id}", request);
+      if (!await HandleMutationResponse(response, "User updated."))
+      {
+         return;
+      }
+
+      await RefreshUsers();
+   }
+
+   private async Task DeleteUser(uint id)
+   {
+      var response = await ApiClient.DeleteAsync($"api/auth/users/{id}");
+      if (!await HandleMutationResponse(response, "User deleted."))
+      {
+         return;
+      }
+
+      await RefreshUsers();
+   }
+
+   private async Task CreateRole()
+   {
+      var response = await ApiClient.PostAsJsonAsync("api/roles", new RoleRequest { role_name = newRoleName });
+      if (!await HandleMutationResponse(response, "Role created."))
+      {
+         return;
+      }
+
+      newRoleName = string.Empty;
+      await RefreshRoles();
+   }
+
+   private async Task SaveRole(RoleLookup role)
+   {
+      var response = await ApiClient.PutAsJsonAsync($"api/roles/{role.role_id}", new RoleRequest
+      {
+         role_name = role.role_name
+      });
+      if (!await HandleMutationResponse(response, "Role updated."))
+      {
+         return;
+      }
+
+      await RefreshRoles();
+   }
+
+   private async Task DeleteRole(uint id)
+   {
+      var response = await ApiClient.DeleteAsync($"api/roles/{id}");
+      if (!await HandleMutationResponse(response, "Role deleted."))
+      {
+         return;
+      }
+
+      await RefreshRoles();
+   }
+
+   private async Task CreateCategory()
+   {
+      var response = await ApiClient.PostAsJsonAsync("api/categories", new CategoryRequest
+      {
+         category_name = newCategoryName
+      });
+      if (!await HandleMutationResponse(response, "Category created."))
+      {
+         return;
+      }
+
+      newCategoryName = string.Empty;
+      await RefreshCategories();
+   }
+
+   private async Task SaveCategory(CategoryLookup category)
+   {
+      var response = await ApiClient.PutAsJsonAsync($"api/categories/{category.category_id}", new CategoryRequest
+      {
+         category_name = category.category_name
+      });
+      if (!await HandleMutationResponse(response, "Category updated."))
+      {
+         return;
+      }
+
+      await RefreshCategories();
+   }
+
+   private async Task DeleteCategory(uint id)
+   {
+      var response = await ApiClient.DeleteAsync($"api/categories/{id}");
+      if (!await HandleMutationResponse(response, "Category deleted."))
+      {
+         return;
+      }
+
+      await RefreshCategories();
+   }
+
+   private async Task CreateSeverity()
+   {
+      var response = await ApiClient.PostAsJsonAsync("api/severity", new SeverityRequest { severity_name = newSeverityName });
+      if (!await HandleMutationResponse(response, "Severity created."))
+      {
+         return;
+      }
+
+      newSeverityName = string.Empty;
+      await RefreshSeverities();
+   }
+
+   private async Task SaveSeverity(SeverityLookup severity)
+   {
+      var response = await ApiClient.PutAsJsonAsync($"api/severity/{severity.severity_id}", new SeverityRequest
+      {
+         severity_name = severity.severity_name
+      });
+      if (!await HandleMutationResponse(response, "Severity updated."))
+      {
+         return;
+      }
+
+      await RefreshSeverities();
+   }
+
+   private async Task DeleteSeverity(uint id)
+   {
+      var response = await ApiClient.DeleteAsync($"api/severity/{id}");
+      if (!await HandleMutationResponse(response, "Severity deleted."))
+      {
+         return;
+      }
+
+      await RefreshSeverities();
+   }
+
+   private async Task RefreshUsers()
+   {
+      users = await ApiClient.GetFromJsonAsync<List<AdminUser>>("api/auth/users") ?? [];
+   }
+
+   private async Task RefreshRoles()
+   {
+      roles = await ApiClient.GetFromJsonAsync<List<RoleLookup>>("api/roles") ?? [];
+      await RefreshUsers();
+   }
+
+   private async Task RefreshCategories()
+   {
+      categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
+   }
+
+   private async Task RefreshSeverities()
+   {
+      severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severity") ?? [];
+   }
+
+   private RenderFragment RenderLookupTable<TLookup>(List<TLookup> items, string type) where TLookup : ILookupRow =>
+builder =>
+   {
+      var sequence = 0;
+      if (items.Count == 0)
+      {
+         builder.OpenElement(sequence++, "p");
+         builder.OpenElement(sequence++, "em");
+         builder.AddContent(sequence++, $"No {type} values found.");
+         builder.CloseElement();
+         builder.CloseElement();
+         return;
+      }
+
+      builder.OpenElement(sequence++, "table");
+      builder.AddAttribute(sequence++, "class", "table table-sm align-middle");
+      builder.OpenElement(sequence++, "thead");
+      builder.OpenElement(sequence++, "tr");
+      builder.OpenElement(sequence++, "th");
+      builder.AddContent(sequence++, "ID");
+      builder.CloseElement();
+      builder.OpenElement(sequence++, "th");
+      builder.AddContent(sequence++, "Name");
+      builder.CloseElement();
+      builder.OpenElement(sequence++, "th");
+      builder.AddContent(sequence++, "Actions");
+      builder.CloseElement();
+      builder.CloseElement();
+      builder.CloseElement();
+      builder.OpenElement(sequence++, "tbody");
+
+      foreach (var item in items)
+      {
+         builder.OpenElement(sequence++, "tr");
+         builder.OpenElement(sequence++, "td");
+         builder.AddContent(sequence++, item.Id);
+         builder.CloseElement();
+         builder.OpenElement(sequence++, "td");
+         builder.OpenElement(sequence++, "input");
+         builder.AddAttribute(sequence++, "class", "form-control form-control-sm");
+         builder.AddAttribute(sequence++, "value", item.Name);
+         builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.CreateBinder<string>(this, value => item.Name =
+value, item.Name));
+         builder.CloseElement();
+         builder.CloseElement();
+         builder.OpenElement(sequence++, "td");
+         builder.OpenElement(sequence++, "button");
+         builder.AddAttribute(sequence++, "class", "btn btn-sm btn-primary me-1");
+         builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => SaveLookup(type, item)));
+         builder.AddContent(sequence++, "Save");
+         builder.CloseElement();
+         builder.OpenElement(sequence++, "button");
+         builder.AddAttribute(sequence++, "class", "btn btn-sm btn-danger");
+         builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => DeleteLookup(type, item.Id)));
+         builder.AddContent(sequence++, "Delete");
+         builder.CloseElement();
+         builder.CloseElement();
+         builder.CloseElement();
+      }
+
+      builder.CloseElement();
+      builder.CloseElement();
+   };
+
+   private Task SaveLookup(string type, ILookupRow item)
+   {
+      return type switch
+      {
+         "role" => SaveRole((RoleLookup)item),
+         "category" => SaveCategory((CategoryLookup)item),
+         "severity" => SaveSeverity((SeverityLookup)item),
+         _ => Task.CompletedTask
+      };
+   }
+
+   private Task DeleteLookup(string type, uint id)
+   {
+      return type switch
+      {
+         "role" => DeleteRole(id),
+         "category" => DeleteCategory(id),
+         "severity" => DeleteSeverity(id),
+         _ => Task.CompletedTask
+      };
+   }
+
+   private async Task<bool> HandleMutationResponse(HttpResponseMessage response, string successMessage)
+   {
+      if (response.IsSuccessStatusCode)
+      {
+         SetSuccess(successMessage);
+         return true;
+      }
+
+      var responseText = await response.Content.ReadAsStringAsync();
+      SetError(string.IsNullOrWhiteSpace(responseText)
+          ? $"Request failed with status {(int)response.StatusCode}."
+          : responseText);
+      return false;
+   }
+
+   private string GetSectionButtonClass(AdminSection section)
+   {
+      return activeSection == section ? "btn btn-primary" : "btn btn-outline-primary";
+   }
+
+   private void SetActiveSectionFromRoute()
+   {
+      var path = NavigationManager
+          .ToBaseRelativePath(NavigationManager.Uri)
+          .Trim('/')
+          .ToLowerInvariant();
+
+      activeSection = path switch
+      {
+         "admin/roles" => AdminSection.Roles,
+         "admin/categories" => AdminSection.Categories,
+         "admin/severity" => AdminSection.Severity,
+         _ => AdminSection.Users
+      };
+   }
+
+   private static string FormatDate(DateTime? value)
+   {
+      return value?.ToString("g") ?? "Never";
+   }
+
+   private void ClearStatus()
+   {
+      statusMessage = null;
+   }
+
+   private void SetSuccess(string message)
+   {
+      statusMessage = message;
+      statusMessageClass = "alert-success";
+   }
+
+   private void SetError(string message)
+   {
+      statusMessage = message;
+      statusMessageClass = "alert-danger";
+   }
+
+   private enum AdminSection
+   {
+      Users,
+      Roles,
+      Categories,
+      Severity
+   }
+}
