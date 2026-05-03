@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using server.Data;
 using server.DTOs;
@@ -148,8 +149,167 @@ public class AuthController : ControllerBase
         });
     }
 
-    // TODO: Add admin-only user management endpoints:
-    // select users, update user profile/role fields, and delete or deactivate users.
+    [HttpGet("users")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> GetUsers()
+    {
+        var users = await (
+            from user in _dbContext.Users.AsNoTracking()
+            join role in _dbContext.Roles.AsNoTracking()
+                on user.role_id equals role.role_id into roles
+            from role in roles.DefaultIfEmpty()
+            orderby user.user_id
+            select new
+            {
+                user.user_id,
+                user.first_name,
+                user.last_name,
+                user.username,
+                user.email,
+                user.role_id,
+                role = role == null ? string.Empty : role.role_name,
+                user.created_at,
+                user.updated_at,
+                user.last_login_at
+            })
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    [HttpGet("users/{id}")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> GetUser(uint id)
+    {
+        var user = await (
+            from u in _dbContext.Users.AsNoTracking()
+            join role in _dbContext.Roles.AsNoTracking()
+                on u.role_id equals role.role_id into roles
+            from role in roles.DefaultIfEmpty()
+            where u.user_id == id
+            select new
+            {
+                u.user_id,
+                u.first_name,
+                u.last_name,
+                u.username,
+                u.email,
+                u.role_id,
+                role = role == null ? string.Empty : role.role_name,
+                u.created_at,
+                u.updated_at,
+                u.last_login_at
+            })
+            .FirstOrDefaultAsync();
+
+        return user == null ? NotFound() : Ok(user);
+    }
+
+    [HttpPut("users/{id}")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> UpdateUser(uint id, AdminUserUpdateRequest request)
+    {
+        var user = await _dbContext.Users.FindAsync(id);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        var firstName = request.first_name?.Trim();
+        var lastName = request.last_name?.Trim();
+        var username = request.username?.Trim();
+        var email = request.email?.Trim();
+
+        if (firstName is { Length: 0 }
+            || lastName is { Length: 0 }
+            || username is { Length: 0 }
+            || email is { Length: 0 })
+        {
+            return BadRequest("Profile fields cannot be empty.");
+        }
+
+        if (request.role_id.HasValue)
+        {
+            var roleExists = await _dbContext.Roles
+                .AsNoTracking()
+                .AnyAsync(r => r.role_id == request.role_id.Value);
+
+            if (!roleExists)
+            {
+                return BadRequest("Role does not exist.");
+            }
+
+            user.role_id = request.role_id.Value;
+        }
+
+        if (username != null && username != user.username)
+        {
+            var usernameExists = await _dbContext.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.user_id != id && u.username == username);
+
+            if (usernameExists)
+            {
+                return Conflict("Username is already taken.");
+            }
+
+            user.username = username;
+        }
+
+        if (email != null && email != user.email)
+        {
+            var emailExists = await _dbContext.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.user_id != id && u.email == email);
+
+            if (emailExists)
+            {
+                return Conflict("Email is already registered.");
+            }
+
+            user.email = email;
+        }
+
+        if (firstName != null)
+        {
+            user.first_name = firstName;
+        }
+
+        if (lastName != null)
+        {
+            user.last_name = lastName;
+        }
+
+        user.updated_at = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpDelete("users/{id}")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> DeleteUser(uint id)
+    {
+        var user = await _dbContext.Users.FindAsync(id);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        _dbContext.Users.Remove(user);
+        await _dbContext.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    public sealed class AdminUserUpdateRequest
+    {
+        public string? first_name { get; set; }
+        public string? last_name { get; set; }
+        public string? username { get; set; }
+        public string? email { get; set; }
+        public uint? role_id { get; set; }
+    }
 
     private string CreateJwtToken(User user, string role)
     {   

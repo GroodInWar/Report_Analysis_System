@@ -1,163 +1,371 @@
-CREATE DATABASE  IF NOT EXISTS `file_analysis_website` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE IF NOT EXISTS `file_analysis_website`
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
 USE `file_analysis_website`;
--- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
---
--- Host: localhost    Database: file_analysis_website
--- ------------------------------------------------------
--- Server version	8.0.44
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!50503 SET NAMES utf8 */;
-/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-/*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+DROP VIEW IF EXISTS `vw_incident_dashboard`;
+DROP VIEW IF EXISTS `vw_report_queue`;
+DROP VIEW IF EXISTS `vw_user_activity_summary`;
+DROP VIEW IF EXISTS `vw_file_evidence_summary`;
+DROP VIEW IF EXISTS `vw_incident_counts_by_severity`;
+DROP VIEW IF EXISTS `vw_incident_counts_by_category`;
+DROP VIEW IF EXISTS `vw_report_counts_by_status`;
+DROP VIEW IF EXISTS `vw_user_report_counts`;
 
---
--- Temporary view structure for view `vw_incident_dashboard`
---
+DROP PROCEDURE IF EXISTS `create_incident_from_report`;
+DROP PROCEDURE IF EXISTS `close_incident`;
+DROP PROCEDURE IF EXISTS `assign_report_to_incident`;
+DROP PROCEDURE IF EXISTS `add_comment_to_incident`;
 
-DROP TABLE IF EXISTS `vw_incident_dashboard`;
-/*!50001 DROP VIEW IF EXISTS `vw_incident_dashboard`*/;
-SET @saved_cs_client     = @@character_set_client;
-/*!50503 SET character_set_client = utf8mb4 */;
-/*!50001 CREATE VIEW `vw_incident_dashboard` AS SELECT 
- 1 AS `incident_id`,
- 1 AS `incident_title`,
- 1 AS `incident_description`,
- 1 AS `category_name`,
- 1 AS `severity_name`,
- 1 AS `created_by_name`,
- 1 AS `created_by_username`,
- 1 AS `incident_status`,
- 1 AS `linked_report_count`,
- 1 AS `comment_count`,
- 1 AS `incident_file_count`,
- 1 AS `created_at`,
- 1 AS `updated_at`,
- 1 AS `resolved_at`*/;
-SET character_set_client = @saved_cs_client;
+DROP FUNCTION IF EXISTS `get_incident_status`;
+DROP FUNCTION IF EXISTS `get_severity_rank`;
 
---
--- Final view structure for view `vw_incident_dashboard`
---
+DROP TRIGGER IF EXISTS `incidents_before_insert_validate_creator_role`;
+DROP TRIGGER IF EXISTS `comments_before_insert_prevent_resolved`;
 
-/*!50001 DROP VIEW IF EXISTS `vw_incident_dashboard`*/;
-/*!50001 SET @saved_cs_client          = @@character_set_client */;
-/*!50001 SET @saved_cs_results         = @@character_set_results */;
-/*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8mb4 */;
-/*!50001 SET character_set_results     = utf8mb4 */;
-/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
-/*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `vw_incident_dashboard` AS select `i`.`incident_id` AS `incident_id`,`i`.`incident_title` AS `incident_title`,`i`.`incident_description` AS `incident_description`,`c`.`category_name` AS `category_name`,`s`.`severity_name` AS `severity_name`,concat(`u`.`first_name`,' ',`u`.`last_name`) AS `created_by_name`,`u`.`username` AS `created_by_username`,`get_incident_status`(`i`.`resolved_at`) AS `incident_status`,count(distinct `r`.`report_id`) AS `linked_report_count`,count(distinct `cm`.`comment_id`) AS `comment_count`,count(distinct `ifi`.`file_id`) AS `incident_file_count`,`i`.`created_at` AS `created_at`,`i`.`updated_at` AS `updated_at`,`i`.`resolved_at` AS `resolved_at` from ((((((`incidents` `i` join `users` `u` on((`i`.`created_by_user_id` = `u`.`user_id`))) join `categories` `c` on((`i`.`category_id` = `c`.`category_id`))) join `severity` `s` on((`i`.`severity_id` = `s`.`severity_id`))) left join `reports` `r` on((`i`.`incident_id` = `r`.`incident_id`))) left join `comments` `cm` on((`i`.`incident_id` = `cm`.`incident_id`))) left join `incident_files` `ifi` on((`i`.`incident_id` = `ifi`.`incident_id`))) group by `i`.`incident_id`,`i`.`incident_title`,`i`.`incident_description`,`c`.`category_name`,`s`.`severity_name`,`u`.`first_name`,`u`.`last_name`,`u`.`username`,`i`.`created_at`,`i`.`updated_at`,`i`.`resolved_at` */;
-/*!50001 SET character_set_client      = @saved_cs_client */;
-/*!50001 SET character_set_results     = @saved_cs_results */;
-/*!50001 SET collation_connection      = @saved_col_connection */;
-
---
--- Dumping events for database 'file_analysis_website'
---
-
---
--- Dumping routines for database 'file_analysis_website'
---
--- TODO: Add more database reporting objects:
--- views for report queues, user activity summaries, or file evidence summaries;
--- aggregation views/queries for counts by severity/category/status/user;
--- procedures such as close_incident, assign_report_to_incident, or add_comment_to_incident;
--- functions such as get_incident_age_days() or get_severity_rank();
--- triggers for incident creator role validation, resolved-incident comment prevention,
--- update auditing, or file hash validation.
-/*!50003 DROP FUNCTION IF EXISTS `get_incident_status` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` FUNCTION `get_incident_status`(p_resolved_at datetime) RETURNS varchar(20) CHARSET utf8mb4
-    DETERMINISTIC
-begin
-    if p_resolved_at is null then
-        return 'open';
-    else
-        return 'resolved';
-    end if;
-end ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `create_incident_from_report` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `create_incident_from_report`(
-    in p_report_id int unsigned,
-    in p_analyst_id int unsigned,
-    in p_category_id int unsigned,
-    in p_severity_id int unsigned,
-    in p_incident_title varchar(150),
-    in p_incident_description text
+
+CREATE FUNCTION `get_incident_status`(p_resolved_at DATETIME)
+RETURNS VARCHAR(20)
+DETERMINISTIC
+NO SQL
+BEGIN
+    RETURN CASE
+        WHEN p_resolved_at IS NULL THEN 'open'
+        ELSE 'resolved'
+    END;
+END ;;
+
+CREATE FUNCTION `get_severity_rank`(p_severity_name VARCHAR(30))
+RETURNS TINYINT UNSIGNED
+DETERMINISTIC
+NO SQL
+BEGIN
+    RETURN CASE LOWER(p_severity_name)
+        WHEN 'low' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'high' THEN 3
+        WHEN 'critical' THEN 4
+        ELSE 0
+    END;
+END ;;
+
+CREATE PROCEDURE `create_incident_from_report`(
+    IN p_report_id INT UNSIGNED,
+    IN p_analyst_id INT UNSIGNED,
+    IN p_category_id INT UNSIGNED,
+    IN p_severity_id INT UNSIGNED,
+    IN p_incident_title VARCHAR(150),
+    IN p_incident_description TEXT
 )
-begin
-    declare v_incident_id int unsigned;
-
-    start transaction;
-
-    insert into incidents (
-        created_by_user_id,
-        category_id,
-        severity_id,
-        incident_title,
-        incident_description
-    )
-    values (
-        p_analyst_id,
-        p_category_id,
-        p_severity_id,
-        p_incident_title,
-        p_incident_description
-    );
-
-    set v_incident_id = last_insert_id();
-
-    update reports
-    set incident_id = v_incident_id,
-        status = 'linked'
-    where report_id = p_report_id;
-
-    commit;
-end ;;
+MODIFIES SQL DATA
+BEGIN
+    DECLARE v_incident_id INT UNSIGNED;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    INSERT INTO `incidents` (
+        `created_by_user_id`,
+        `category_id`,
+        `severity_id`,
+        `incident_title`,
+        `incident_description`
+    )
+    VALUES (
+        p_analyst_id,
+        p_category_id,
+        p_severity_id,
+        p_incident_title,
+        p_incident_description
+    );
+
+    SET v_incident_id = LAST_INSERT_ID();
+
+    UPDATE `reports`
+    SET `incident_id` = v_incident_id,
+        `status` = 'linked'
+    WHERE `report_id` = p_report_id;
+
+    IF ROW_COUNT() = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Report does not exist.';
+    END IF;
+
+    COMMIT;
+END ;;
+
+CREATE PROCEDURE `close_incident`(
+    IN p_incident_id INT UNSIGNED
+)
+MODIFIES SQL DATA
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    UPDATE `incidents`
+    SET `resolved_at` = COALESCE(`resolved_at`, CURRENT_TIMESTAMP),
+        `updated_at` = CURRENT_TIMESTAMP
+    WHERE `incident_id` = p_incident_id;
+
+    IF ROW_COUNT() = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Incident does not exist.';
+    END IF;
+
+    UPDATE `reports`
+    SET `status` = 'closed'
+    WHERE `incident_id` = p_incident_id
+      AND `status` = 'linked';
+
+    COMMIT;
+END ;;
+
+CREATE PROCEDURE `assign_report_to_incident`(
+    IN p_report_id INT UNSIGNED,
+    IN p_incident_id INT UNSIGNED
+)
+MODIFIES SQL DATA
+BEGIN
+    UPDATE `reports`
+    SET `incident_id` = p_incident_id,
+        `status` = 'linked'
+    WHERE `report_id` = p_report_id;
+
+    IF ROW_COUNT() = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Report does not exist.';
+    END IF;
+END ;;
+
+CREATE PROCEDURE `add_comment_to_incident`(
+    IN p_incident_id INT UNSIGNED,
+    IN p_user_id INT UNSIGNED,
+    IN p_comment_text TEXT
+)
+MODIFIES SQL DATA
+BEGIN
+    INSERT INTO `comments` (
+        `incident_id`,
+        `user_id`,
+        `comment_text`
+    )
+    VALUES (
+        p_incident_id,
+        p_user_id,
+        p_comment_text
+    );
+END ;;
+
+CREATE TRIGGER `incidents_before_insert_validate_creator_role`
+BEFORE INSERT ON `incidents`
+FOR EACH ROW
+BEGIN
+    DECLARE v_authorized_creator_count INT DEFAULT 0;
+
+    SELECT COUNT(*)
+    INTO v_authorized_creator_count
+    FROM `users` AS `u`
+    INNER JOIN `roles` AS `r`
+        ON `u`.`role_id` = `r`.`role_id`
+    WHERE `u`.`user_id` = NEW.`created_by_user_id`
+      AND `r`.`role_name` IN ('admin', 'analyst');
+
+    IF v_authorized_creator_count = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Only analysts or admins can create incidents.';
+    END IF;
+END ;;
+
+CREATE TRIGGER `comments_before_insert_prevent_resolved`
+BEFORE INSERT ON `comments`
+FOR EACH ROW
+BEGIN
+    DECLARE v_resolved_at DATETIME;
+
+    SELECT `resolved_at`
+    INTO v_resolved_at
+    FROM `incidents`
+    WHERE `incident_id` = NEW.`incident_id`;
+
+    IF v_resolved_at IS NOT NULL THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Comments cannot be added to resolved incidents.';
+    END IF;
+END ;;
+
 DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
-/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+CREATE VIEW `vw_incident_dashboard` AS
+SELECT
+    `i`.`incident_id`,
+    `i`.`incident_title`,
+    `i`.`incident_description`,
+    `c`.`category_name`,
+    `s`.`severity_name`,
+    `get_severity_rank`(`s`.`severity_name`) AS `severity_rank`,
+    CONCAT(`u`.`first_name`, ' ', `u`.`last_name`) AS `created_by_name`,
+    `u`.`username` AS `created_by_username`,
+    `get_incident_status`(`i`.`resolved_at`) AS `incident_status`,
+    COUNT(DISTINCT `r`.`report_id`) AS `linked_report_count`,
+    COUNT(DISTINCT `cm`.`comment_id`) AS `comment_count`,
+    COUNT(DISTINCT `ifi`.`file_id`) AS `incident_file_count`,
+    `i`.`created_at`,
+    `i`.`updated_at`,
+    `i`.`resolved_at`
+FROM `incidents` AS `i`
+INNER JOIN `users` AS `u`
+    ON `i`.`created_by_user_id` = `u`.`user_id`
+INNER JOIN `categories` AS `c`
+    ON `i`.`category_id` = `c`.`category_id`
+INNER JOIN `severity` AS `s`
+    ON `i`.`severity_id` = `s`.`severity_id`
+LEFT JOIN `reports` AS `r`
+    ON `i`.`incident_id` = `r`.`incident_id`
+LEFT JOIN `comments` AS `cm`
+    ON `i`.`incident_id` = `cm`.`incident_id`
+LEFT JOIN `incident_files` AS `ifi`
+    ON `i`.`incident_id` = `ifi`.`incident_id`
+GROUP BY
+    `i`.`incident_id`,
+    `i`.`incident_title`,
+    `i`.`incident_description`,
+    `c`.`category_name`,
+    `s`.`severity_name`,
+    `u`.`first_name`,
+    `u`.`last_name`,
+    `u`.`username`,
+    `i`.`created_at`,
+    `i`.`updated_at`,
+    `i`.`resolved_at`;
 
--- Dump completed
+CREATE VIEW `vw_report_queue` AS
+SELECT
+    `r`.`report_id`,
+    `r`.`title`,
+    `r`.`report_text`,
+    `r`.`status`,
+    `r`.`submitted_at`,
+    `r`.`updated_at`,
+    `u`.`user_id` AS `submitted_by_user_id`,
+    `u`.`username` AS `submitted_by_username`,
+    `i`.`incident_id`,
+    `i`.`incident_title`,
+    COUNT(DISTINCT `rf`.`file_id`) AS `attached_file_count`
+FROM `reports` AS `r`
+INNER JOIN `users` AS `u`
+    ON `r`.`submitted_by_user_id` = `u`.`user_id`
+LEFT JOIN `incidents` AS `i`
+    ON `r`.`incident_id` = `i`.`incident_id`
+LEFT JOIN `report_files` AS `rf`
+    ON `r`.`report_id` = `rf`.`report_id`
+GROUP BY
+    `r`.`report_id`,
+    `r`.`title`,
+    `r`.`report_text`,
+    `r`.`status`,
+    `r`.`submitted_at`,
+    `r`.`updated_at`,
+    `u`.`user_id`,
+    `u`.`username`,
+    `i`.`incident_id`,
+    `i`.`incident_title`;
+
+CREATE VIEW `vw_user_activity_summary` AS
+SELECT
+    `u`.`user_id`,
+    `u`.`username`,
+    `r`.`role_name`,
+    COUNT(DISTINCT `rp`.`report_id`) AS `submitted_report_count`,
+    COUNT(DISTINCT `i`.`incident_id`) AS `created_incident_count`,
+    COUNT(DISTINCT `c`.`comment_id`) AS `comment_count`,
+    `u`.`last_login_at`
+FROM `users` AS `u`
+INNER JOIN `roles` AS `r`
+    ON `u`.`role_id` = `r`.`role_id`
+LEFT JOIN `reports` AS `rp`
+    ON `u`.`user_id` = `rp`.`submitted_by_user_id`
+LEFT JOIN `incidents` AS `i`
+    ON `u`.`user_id` = `i`.`created_by_user_id`
+LEFT JOIN `comments` AS `c`
+    ON `u`.`user_id` = `c`.`user_id`
+GROUP BY
+    `u`.`user_id`,
+    `u`.`username`,
+    `r`.`role_name`,
+    `u`.`last_login_at`;
+
+CREATE VIEW `vw_file_evidence_summary` AS
+SELECT
+    `f`.`file_id`,
+    `f`.`file_name`,
+    `f`.`file_path`,
+    `f`.`file_hash`,
+    `f`.`uploaded_at`,
+    COUNT(DISTINCT `rf`.`report_id`) AS `linked_report_count`,
+    COUNT(DISTINCT `ifi`.`incident_id`) AS `linked_incident_count`
+FROM `files` AS `f`
+LEFT JOIN `report_files` AS `rf`
+    ON `f`.`file_id` = `rf`.`file_id`
+LEFT JOIN `incident_files` AS `ifi`
+    ON `f`.`file_id` = `ifi`.`file_id`
+GROUP BY
+    `f`.`file_id`,
+    `f`.`file_name`,
+    `f`.`file_path`,
+    `f`.`file_hash`,
+    `f`.`uploaded_at`;
+
+CREATE VIEW `vw_incident_counts_by_severity` AS
+SELECT
+    `s`.`severity_id`,
+    `s`.`severity_name`,
+    `get_severity_rank`(`s`.`severity_name`) AS `severity_rank`,
+    COUNT(`i`.`incident_id`) AS `incident_count`
+FROM `severity` AS `s`
+LEFT JOIN `incidents` AS `i`
+    ON `s`.`severity_id` = `i`.`severity_id`
+GROUP BY
+    `s`.`severity_id`,
+    `s`.`severity_name`;
+
+CREATE VIEW `vw_incident_counts_by_category` AS
+SELECT
+    `c`.`category_id`,
+    `c`.`category_name`,
+    COUNT(`i`.`incident_id`) AS `incident_count`
+FROM `categories` AS `c`
+LEFT JOIN `incidents` AS `i`
+    ON `c`.`category_id` = `i`.`category_id`
+GROUP BY
+    `c`.`category_id`,
+    `c`.`category_name`;
+
+CREATE VIEW `vw_report_counts_by_status` AS
+SELECT
+    `r`.`status`,
+    COUNT(*) AS `report_count`
+FROM `reports` AS `r`
+GROUP BY `r`.`status`;
+
+CREATE VIEW `vw_user_report_counts` AS
+SELECT
+    `u`.`user_id`,
+    `u`.`username`,
+    COUNT(`r`.`report_id`) AS `report_count`
+FROM `users` AS `u`
+LEFT JOIN `reports` AS `r`
+    ON `u`.`user_id` = `r`.`submitted_by_user_id`
+GROUP BY
+    `u`.`user_id`,
+    `u`.`username`;
