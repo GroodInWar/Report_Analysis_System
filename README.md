@@ -217,11 +217,13 @@ client/Program.cs
 
 The runtime seeder and SQL rebuild script create these demo accounts:
 
-|Role|Username|Email|Password|
-|--------|----------|---------------------|-------------|
-|Admin|admin|<admin@example.com>|Admin123!|
-|Analyst|analyst|<analyst@example.com>|Analyst123!|
-|User|user|<user@example.com>|User123!|
+| Role | Username | Email | Password |
+|------|----------|-------|----------|
+| Admin | `admin` | `admin@example.com` | `Admin123!` |
+| Analyst | `analyst` | `analyst@example.com` | `Analyst123!` |
+| User | `user` | `user@example.com` | `User123!` |
+
+To add or refresh these rows in an existing database without rebuilding everything, run `Database_Schema/add_demo_users.sql` against the `file_analysis_website` database.
 
 ## Tests
 

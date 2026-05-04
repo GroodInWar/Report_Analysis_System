@@ -40,7 +40,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `email` (`email`),
   KEY `fk_users_role` (`role_id`),
   CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`role_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -49,7 +49,12 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,2,'test','test','test','test@gmail.com','9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08','2026-04-04 13:59:34','2026-04-04 13:59:38','2026-04-04 13:59:40'),(2,3,'Sakamoto de Toledo','Gustavo','groodinwar','gustavosakamotox@gmail.com','0dc3c3921b7ab6d5b6622e2487a701fec4a9c314cf68c0439628679909ab96ac','2026-04-29 22:41:25','2026-04-30 21:21:16','2026-04-30 21:21:16');
+INSERT INTO `users` VALUES
+(1,2,'test','test','test','test@gmail.com','9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08','2026-04-04 13:59:34','2026-04-04 13:59:38','2026-04-04 13:59:40'),
+(2,3,'Sakamoto de Toledo','Gustavo','groodinwar','gustavosakamotox@gmail.com','0dc3c3921b7ab6d5b6622e2487a701fec4a9c314cf68c0439628679909ab96ac','2026-04-29 22:41:25','2026-04-30 21:21:16','2026-04-30 21:21:16'),
+(10,1,'User','Admin','admin','admin@example.com','3eb3fe66b31e3b4d10fa70b5cad49c7112294af6ae4e476a1c405155d45aa121',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL),
+(11,3,'Analyst','Analyst','analyst','analyst@example.com','84a6ed197836ce9fe88ed4cd036a048c7b01ce048ba35d8f9b2f7cf6bbc2970a',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL),
+(12,2,'User','Uma','user','user@example.com','bc5848f227cc161eb5f68dfe98cb13110a9c843ce69e953a88107d865583d397',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

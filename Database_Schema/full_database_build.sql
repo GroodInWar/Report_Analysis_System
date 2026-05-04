@@ -413,44 +413,82 @@ UNLOCK TABLES;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `reports_before_update_validate_status` BEFORE UPDATE ON `reports` FOR EACH ROW begin
-    if old.status <> new.status then
-
-        if old.status = 'submitted'
-           and new.status not in ('under_review', 'linked', 'rejected') then
-            signal sqlstate '45000'
-                set message_text = 'Invalid report status transition from submitted.';
-        end if;
-
-        if old.status = 'under_review'
-           and new.status not in ('linked', 'rejected', 'closed') then
-            signal sqlstate '45000'
-                set message_text = 'Invalid report status transition from under_review.';
-        end if;
-
-        if old.status = 'linked'
-           and new.status not in ('closed') then
-            signal sqlstate '45000'
-                set message_text = 'Invalid report status transition from linked.';
-        end if;
-
-        if old.status in ('closed', 'rejected')
-           and new.status <> old.status then
-            signal sqlstate '45000'
-                set message_text = 'Closed or rejected reports cannot change status.';
-        end if;
-
-    end if;
-
-    if new.status in ('linked', 'closed') and new.incident_id is null then
-        signal sqlstate '45000'
-            set message_text = 'A linked or closed report must reference an incident.';
-    end if;
-
-    if new.status = 'rejected' and new.incident_id is not null then
-        signal sqlstate '45000'
-            set message_text = 'A rejected report cannot reference an incident.';
-    end if;
+/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `reports_before_update_validate_status` BEFORE UPDATE ON `reports` FOR EACH ROW begin
+
+    if old.status <> new.status then
+
+
+
+        if old.status = 'submitted'
+
+           and new.status not in ('under_review', 'linked', 'rejected') then
+
+            signal sqlstate '45000'
+
+                set message_text = 'Invalid report status transition from submitted.';
+
+        end if;
+
+
+
+        if old.status = 'under_review'
+
+           and new.status not in ('linked', 'rejected', 'closed') then
+
+            signal sqlstate '45000'
+
+                set message_text = 'Invalid report status transition from under_review.';
+
+        end if;
+
+
+
+        if old.status = 'linked'
+
+           and new.status not in ('closed') then
+
+            signal sqlstate '45000'
+
+                set message_text = 'Invalid report status transition from linked.';
+
+        end if;
+
+
+
+        if old.status in ('closed', 'rejected')
+
+           and new.status <> old.status then
+
+            signal sqlstate '45000'
+
+                set message_text = 'Closed or rejected reports cannot change status.';
+
+        end if;
+
+
+
+    end if;
+
+
+
+    if new.status in ('linked', 'closed') and new.incident_id is null then
+
+        signal sqlstate '45000'
+
+            set message_text = 'A linked or closed report must reference an incident.';
+
+    end if;
+
+
+
+    if new.status = 'rejected' and new.incident_id is not null then
+
+        signal sqlstate '45000'
+
+            set message_text = 'A rejected report cannot reference an incident.';
+
+    end if;
+
 end */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1126,7 +1164,7 @@ INSERT INTO `users` (
 )
 VALUES
     (10, 1, 'User', 'Admin', 'admin', 'admin@example.com', '3eb3fe66b31e3b4d10fa70b5cad49c7112294af6ae4e476a1c405155d45aa121', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    (11, 3, 'Analyst', 'Avery', 'analyst', 'analyst@example.com', '84a6ed197836ce9fe88ed4cd036a048c7b01ce048ba35d8f9b2f7cf6bbc2970a', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (11, 3, 'Analyst', 'Analyst', 'analyst', 'analyst@example.com', '84a6ed197836ce9fe88ed4cd036a048c7b01ce048ba35d8f9b2f7cf6bbc2970a', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     (12, 2, 'User', 'Uma', 'user', 'user@example.com', 'bc5848f227cc161eb5f68dfe98cb13110a9c843ce69e953a88107d865583d397', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT INTO `incidents` (
