@@ -219,6 +219,40 @@ public sealed class IntegrationCoverageTests : IClassFixture<ApiFactory>
         Assert.Contains(fileId.ToString(), detailText);
     }
 
+    [Fact]
+    public async Task Deleting_Incident_Unlinks_Linked_Reports()
+    {
+        var user = _factory.CreateClient();
+        await TestAuth.AuthenticateAsync(user, "user", "User123!");
+
+        var reportResponse = await user.PostAsJsonAsync("/api/reports", new Report
+        {
+            title = $"Unlink workflow report {Guid.NewGuid():N}",
+            report_text = "Report should return to review after its incident is deleted."
+        });
+        Assert.Equal(HttpStatusCode.Created, reportResponse.StatusCode);
+        var report = await reportResponse.Content.ReadFromJsonAsync<Report>();
+        Assert.NotNull(report);
+
+        var analyst = _factory.CreateClient();
+        await TestAuth.AuthenticateAsync(analyst, "analyst", "Analyst123!");
+        var lookup = await GetLookups(analyst);
+        var incident = await CreateIncident(analyst, lookup.CategoryIds["phishing"], lookup.SeverityIds["medium"], "Incident delete unlink workflow");
+
+        var linkResponse = await analyst.PostAsync($"/api/reports/{report!.report_id}/link-incident/{incident.incident_id}", null);
+        Assert.Equal(HttpStatusCode.NoContent, linkResponse.StatusCode);
+
+        var deleteResponse = await analyst.DeleteAsync($"/api/incidents/{incident.incident_id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var reportDetail = await user.GetAsync($"/api/reports/{report.report_id}");
+        Assert.Equal(HttpStatusCode.OK, reportDetail.StatusCode);
+
+        using var document = await JsonDocument.ParseAsync(await reportDetail.Content.ReadAsStreamAsync());
+        Assert.Equal("under_review", document.RootElement.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("incident_id").ValueKind);
+    }
+
     private static async Task<(Dictionary<string, uint> CategoryIds, Dictionary<string, uint> SeverityIds)> GetLookups(HttpClient client)
     {
         var categories = await client.GetFromJsonAsync<JsonElement[]>("/api/categories") ?? [];

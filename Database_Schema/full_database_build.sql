@@ -445,7 +445,7 @@ DELIMITER ;;
 
         if old.status = 'linked'
 
-           and new.status not in ('closed') then
+           and new.status not in ('under_review', 'closed') then
 
             signal sqlstate '45000'
 

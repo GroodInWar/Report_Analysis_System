@@ -75,7 +75,7 @@ DELIMITER ;;
         end if;
 
         if old.status = 'linked'
-           and new.status not in ('closed') then
+           and new.status not in ('under_review', 'closed') then
             signal sqlstate '45000'
                 set message_text = 'Invalid report status transition from linked.';
         end if;
