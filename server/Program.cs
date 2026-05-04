@@ -1,16 +1,28 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("DefaultConnection string is missing.");
+if (builder.Environment.IsEnvironment("Test"))
+{
+    var databaseName = builder.Configuration["TestDatabaseName"] ?? "file-analysis-test";
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options
+            .UseInMemoryDatabase(databaseName)
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+}
+else
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("DefaultConnection string is missing.");
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseMySQL(connectionString));
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseMySQL(connectionString));
+}
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("JWT signing key is missing.");
@@ -47,7 +59,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await DbSeeder.SeedAsync(dbContext);
+    var environment = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+    await DbSeeder.SeedAsync(dbContext, environment);
 }
 app.UseCors("AllowClient");
 app.UseAuthentication();
@@ -56,3 +69,7 @@ app.MapControllers();
 app.MapGet("/", () => "Hello World!");
 
 app.Run();
+
+public partial class Program
+{
+}

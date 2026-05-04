@@ -5,6 +5,7 @@
 @using client.Services
 @inject AuthService AuthService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
 
 <h3>Incident Details</h3>
 
@@ -132,6 +133,18 @@ else
 
     <section class="mt-4">
         <h4>Comments</h4>
+        @if (!string.IsNullOrWhiteSpace(commentMessage))
+        {
+            <div class="alert alert-info">@commentMessage</div>
+        }
+        @if (currentUserId != null && !IsResolved)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="new-comment">New Comment</label>
+                <textarea id="new-comment" class="form-control" rows="3" @bind="newCommentText"></textarea>
+                <button type="button" class="btn btn-primary mt-2" @onclick="CreateComment">Add Comment</button>
+            </div>
+        }
         @if (incident.Comments.Count == 0)
         {
             <p><em>No comments are visible for this incident.</em></p>
@@ -146,7 +159,29 @@ else
                             <strong>@DisplayName(comment.User, $"{comment.user_id}")</strong>
                             <small>@comment.created_at.ToString("g")</small>
                         </div>
-                        <p class="mb-0">@comment.comment_text</p>
+                        @if (editingCommentId == comment.comment_id)
+                        {
+                            <textarea class="form-control my-2" rows="3" @bind="editingCommentText"></textarea>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-success btn-sm" @onclick="SaveCommentEdit">Save</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CancelCommentEdit">Cancel</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="mb-1">@comment.comment_text</p>
+                            @if (comment.updated_at.HasValue && comment.updated_at.Value > comment.created_at.AddSeconds(1))
+                            {
+                                <small class="text-muted">Edited @comment.updated_at.Value.ToString("g")</small>
+                            }
+                            @if (CanManageComment(comment))
+                            {
+                                <div class="btn-group d-block mt-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="@(() => BeginCommentEdit(comment))">Edit</button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" @onclick="@(() => DeleteComment(comment.comment_id))">Delete</button>
+                                </div>
+                            }
+                        }
                     </div>
                 }
             </div>
@@ -155,6 +190,38 @@ else
 
     <section class="mt-4">
         <h4>Files</h4>
+        @if (!string.IsNullOrWhiteSpace(fileMessage))
+        {
+            <div class="alert alert-info">@fileMessage</div>
+        }
+        @if (CanManageFiles)
+        {
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Upload Evidence</label>
+                    <InputFile OnChange="OnIncidentFilesSelected" multiple class="form-control" />
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary" disabled="@(selectedFiles.Count == 0)" @onclick="UploadIncidentFiles">Upload</button>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="existing-file-id">Existing File ID</label>
+                    <input id="existing-file-id" class="form-control" @bind="linkFileId" />
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-outline-primary" @onclick="LinkExistingFile">Link</button>
+                </div>
+            </div>
+            @if (selectedFiles.Count > 0)
+            {
+                <ul class="small text-muted">
+                    @foreach (var file in selectedFiles)
+                    {
+                        <li>@file.Name (@FormatFileSize(file.Size))</li>
+                    }
+                </ul>
+            }
+        }
         @if (incident.Files.Count == 0)
         {
             <p><em>No files are visible for this incident.</em></p>
@@ -165,8 +232,17 @@ else
                 @foreach (var file in incident.Files)
                 {
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>@file.file_name</span>
-                        <small class="text-muted">Uploaded @file.uploaded_at.ToString("g")</small>
+                        <span>
+                            <strong>@file.file_name</strong>
+                            <small class="text-muted d-block">Uploaded @file.uploaded_at.ToString("g")</small>
+                        </span>
+                        <span class="btn-group">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="@(() => DownloadFile(file))">Download</button>
+                            @if (CanManageFiles)
+                            {
+                                <button type="button" class="btn btn-outline-danger btn-sm" @onclick="@(() => RemoveIncidentFileLink(file.file_id))">Remove</button>
+                            }
+                        </span>
                     </li>
                 }
             </ul>
@@ -183,10 +259,21 @@ else
 
     private IncidentDetail? incident;
     private string? errorMessage;
+    private string? commentMessage;
+    private string? fileMessage;
     private uint? currentUserId;
+    private bool isAdmin;
+    private bool isAnalyst;
     private string statusValue = "open";
+    private string newCommentText = "";
+    private uint? editingCommentId;
+    private string editingCommentText = "";
+    private readonly List<IBrowserFile> selectedFiles = [];
+    private string linkFileId = "";
+    private const long MaxUploadBytes = 25 * 1024 * 1024;
     private bool canEdit => incident?.CanEdit ?? incident?.IsOwner ?? (incident != null && currentUserId ==
 incident.CreatedByUserId);
+    private bool CanManageFiles => incident?.CanManageFiles == true || isAdmin || isAnalyst;
     private bool IsResolved => incident?.resolved_at != null;
     private string StatusLabel => IsResolved ? "Resolved" : "Open";
     private string CategoryLabel => string.IsNullOrWhiteSpace(incident?.Category?.category_name)
@@ -223,6 +310,8 @@ incident.CreatedByUserId);
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var userIdClaim = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        isAdmin = authState.User.IsInRole("Admin") || authState.User.IsInRole("admin");
+        isAnalyst = authState.User.IsInRole("Analyst") || authState.User.IsInRole("analyst");
 
         if (uint.TryParse(userIdClaim, out var userId))
         {
@@ -236,10 +325,192 @@ incident.CreatedByUserId);
         {
             incident = await ApiClient.GetFromJsonAsync<IncidentDetail>($"api/incidents/{IncidentId}");
             statusValue = incident?.resolved_at == null ? "open" : "resolved";
+            commentMessage = null;
+            fileMessage = null;
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading incident: {ex.Message}";
+        }
+    }
+
+    private async Task CreateComment()
+    {
+        commentMessage = null;
+        if (incident == null || string.IsNullOrWhiteSpace(newCommentText))
+        {
+            commentMessage = "Comment text is required.";
+            return;
+        }
+
+        var response = await ApiClient.PostAsJsonAsync("api/comments", new Comment
+        {
+            incident_id = incident.incident_id,
+            comment_text = newCommentText
+        });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            commentMessage = $"Error adding comment: {response.ReasonPhrase}";
+            return;
+        }
+
+        newCommentText = "";
+        await LoadIncident();
+    }
+
+    private void BeginCommentEdit(CommentSummary comment)
+    {
+        editingCommentId = comment.comment_id;
+        editingCommentText = comment.comment_text;
+    }
+
+    private void CancelCommentEdit()
+    {
+        editingCommentId = null;
+        editingCommentText = "";
+    }
+
+    private async Task SaveCommentEdit()
+    {
+        if (editingCommentId == null || string.IsNullOrWhiteSpace(editingCommentText))
+        {
+            commentMessage = "Comment text is required.";
+            return;
+        }
+
+        var response = await ApiClient.PutAsJsonAsync($"api/comments/{editingCommentId}", new Comment
+        {
+            comment_text = editingCommentText
+        });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            commentMessage = $"Error updating comment: {response.ReasonPhrase}";
+            return;
+        }
+
+        CancelCommentEdit();
+        await LoadIncident();
+    }
+
+    private async Task DeleteComment(uint commentId)
+    {
+        var response = await ApiClient.DeleteAsync($"api/comments/{commentId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            commentMessage = $"Error deleting comment: {response.ReasonPhrase}";
+            return;
+        }
+
+        await LoadIncident();
+    }
+
+    private bool CanManageComment(CommentSummary comment)
+    {
+        return isAdmin || currentUserId == comment.user_id;
+    }
+
+    private void OnIncidentFilesSelected(InputFileChangeEventArgs args)
+    {
+        selectedFiles.Clear();
+        selectedFiles.AddRange(args.GetMultipleFiles());
+    }
+
+    private async Task UploadIncidentFiles()
+    {
+        if (incident == null)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var selectedFile in selectedFiles)
+            {
+                if (selectedFile.Size > MaxUploadBytes)
+                {
+                    throw new InvalidOperationException($"{selectedFile.Name} exceeds the 25 MB upload limit.");
+                }
+
+                using var content = new MultipartFormDataContent();
+                using var stream = selectedFile.OpenReadStream(MaxUploadBytes);
+                using var fileContent = new StreamContent(stream);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(selectedFile.ContentType)
+                        ? "application/octet-stream"
+                        : selectedFile.ContentType);
+
+                content.Add(fileContent, "uploadedFile", selectedFile.Name);
+
+                var response = await ApiClient.PostAsync($"api/files/upload?incidentId={incident.incident_id}", content);
+                response.EnsureSuccessStatusCode();
+            }
+
+            selectedFiles.Clear();
+            await LoadIncident();
+        }
+        catch (Exception ex)
+        {
+            fileMessage = $"Error uploading file: {ex.Message}";
+        }
+    }
+
+    private async Task LinkExistingFile()
+    {
+        if (incident == null || !uint.TryParse(linkFileId, out var fileId))
+        {
+            fileMessage = "Enter a valid file ID.";
+            return;
+        }
+
+        var response = await ApiClient.PostAsJsonAsync("api/IncidentFiles", new Incident_File
+        {
+            incident_id = incident.incident_id,
+            file_id = fileId
+        });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            fileMessage = $"Error linking file: {response.ReasonPhrase}";
+            return;
+        }
+
+        linkFileId = "";
+        await LoadIncident();
+    }
+
+    private async Task RemoveIncidentFileLink(uint fileId)
+    {
+        if (incident == null)
+        {
+            return;
+        }
+
+        var response = await ApiClient.DeleteAsync($"api/IncidentFiles/{incident.incident_id}/{fileId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            fileMessage = $"Error removing file link: {response.ReasonPhrase}";
+            return;
+        }
+
+        await LoadIncident();
+    }
+
+    private async Task DownloadFile(FileSummary file)
+    {
+        try
+        {
+            var bytes = await ApiClient.GetByteArrayAsync($"api/files/{file.file_id}/download");
+            await JS.InvokeVoidAsync(
+                "fileAnalysisDownloads.downloadFromBase64",
+                file.file_name,
+                Convert.ToBase64String(bytes),
+                "application/octet-stream");
+        }
+        catch (Exception ex)
+        {
+            fileMessage = $"Error downloading file: {ex.Message}";
         }
     }
 
@@ -305,5 +576,20 @@ incident.CreatedByUserId);
     private static string Username(UserSummary? user, string fallback)
     {
         return string.IsNullOrWhiteSpace(user?.username) ? fallback : user.username;
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / 1024d / 1024d:F1} MB";
+        }
+
+        if (bytes >= 1024)
+        {
+            return $"{bytes / 1024d:F1} KB";
+        }
+
+        return $"{bytes} B";
     }
 }

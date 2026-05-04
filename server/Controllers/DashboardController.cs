@@ -116,24 +116,28 @@ public class DashboardController : ControllerBase
   [HttpGet("file-count-per-incident")]
   public async Task<IActionResult> GetFileCountPerIncident()
   {
-    var result = await (
-      from incident in _dbContext.Incidents.AsNoTracking()
-      join incidentFileCount in
-        (
-          from incidentFile in _dbContext.IncidentFiles.AsNoTracking()
-          group incidentFile by incidentFile.incident_id into g
-          select new { IncidentId = g.Key, FileCount = g.Count() }
-        )
-        on incident.incident_id equals incidentFileCount.IncidentId into incidentFileCounts
-      from incidentFileCount in incidentFileCounts.DefaultIfEmpty()
-      orderby incident.incident_id
-      select new
+    var fileCounts = await _dbContext.IncidentFiles
+      .AsNoTracking()
+      .GroupBy(incidentFile => incidentFile.incident_id)
+      .Select(g => new { IncidentId = g.Key, FileCount = g.Count() })
+      .ToDictionaryAsync(row => row.IncidentId, row => row.FileCount);
+
+    var incidents = await _dbContext.Incidents
+      .AsNoTracking()
+      .OrderBy(incident => incident.incident_id)
+      .Select(incident => new
       {
         IncidentId = incident.incident_id,
-        IncidentTitle = incident.incident_title,
-        FileCount = incidentFileCount == null ? 0 : incidentFileCount.FileCount
+        IncidentTitle = incident.incident_title
       })
       .ToListAsync();
+
+    var result = incidents.Select(incident => new
+    {
+      incident.IncidentId,
+      incident.IncidentTitle,
+      FileCount = fileCounts.GetValueOrDefault(incident.IncidentId)
+    });
 
     return Ok(result);
   }

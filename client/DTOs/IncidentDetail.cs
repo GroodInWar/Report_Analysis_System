@@ -15,6 +15,8 @@ public class IncidentDetail
     public DateTime updated_at { get; set; }
     public DateTime? resolved_at { get; set; }
     public bool? CanEdit { get; set; }
+    public bool? CanDelete { get; set; }
+    public bool? CanManageFiles { get; set; }
     public bool? IsOwner { get; set; }
     public List<ReportSummary> Reports { get; set; } = [];
     public List<CommentSummary> Comments { get; set; } = [];

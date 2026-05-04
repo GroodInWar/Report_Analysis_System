@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,11 @@ public class ReportFilesController : ControllerBase
   [HttpGet("reports/{reportId}")]
   public async Task<ActionResult<IEnumerable<Report_File>>> GetLinksByReport(uint reportId)
   {
+    if (!await CanAccessReport(reportId))
+    {
+      return Forbid();
+    }
+
     var reportFiles = await _dbContext.ReportFiles
       .AsNoTracking()
       .Where(rf => rf.report_id == reportId)
@@ -30,6 +36,7 @@ public class ReportFilesController : ControllerBase
   }
 
   [HttpGet("files/{fileId}")]
+  [Authorize(Roles = "Analyst,analyst,Admin,admin")]
   public async Task<ActionResult<IEnumerable<Report_File>>> GetLinksByFile(uint fileId)
   {
     var reportFiles = await _dbContext.ReportFiles
@@ -43,6 +50,11 @@ public class ReportFilesController : ControllerBase
   [HttpGet("{reportId}/{fileId}")]
   public async Task<ActionResult<Report_File>> GetReportFileLink(uint reportId, uint fileId)
   {
+    if (!await CanAccessReport(reportId))
+    {
+      return Forbid();
+    }
+
     var reportFile = await _dbContext.ReportFiles
       .AsNoTracking()
       .FirstOrDefaultAsync(rf => rf.report_id == reportId && rf.file_id == fileId);
@@ -61,6 +73,19 @@ public class ReportFilesController : ControllerBase
     if (reportFile == null || reportFile.report_id == 0 || reportFile.file_id == 0)
     {
       return BadRequest("Invalid report-file link data.");
+    }
+
+    if (!await CanAccessReport(reportFile.report_id))
+    {
+      return Forbid();
+    }
+
+    var fileExists = await _dbContext.Files
+      .AsNoTracking()
+      .AnyAsync(f => f.file_id == reportFile.file_id);
+    if (!fileExists)
+    {
+      return NotFound("File not found.");
     }
 
     var exists = await _dbContext.ReportFiles
@@ -82,14 +107,50 @@ public class ReportFilesController : ControllerBase
   [HttpDelete("{reportId}/{fileId}")]
   public async Task<IActionResult> DeleteReportFileLink(uint reportId, uint fileId)
   {
-    var deleted = await _dbContext.ReportFiles
-      .Where(rf => rf.report_id == reportId && rf.file_id == fileId)
-      .ExecuteDeleteAsync();
-    if (deleted == 0)
+    if (!await CanAccessReport(reportId))
+    {
+      return Forbid();
+    }
+
+    var reportFile = await _dbContext.ReportFiles
+      .FirstOrDefaultAsync(rf => rf.report_id == reportId && rf.file_id == fileId);
+    if (reportFile == null)
     {
       return NotFound("The report-file link not found.");
     }
 
+    _dbContext.ReportFiles.Remove(reportFile);
+    await _dbContext.SaveChangesAsync();
+
     return NoContent();
+  }
+
+  private async Task<bool> CanAccessReport(uint reportId)
+  {
+    if (User.IsInRole("Analyst") ||
+      User.IsInRole("analyst") ||
+      User.IsInRole("Admin") ||
+      User.IsInRole("admin"))
+    {
+      return await _dbContext.Reports
+        .AsNoTracking()
+        .AnyAsync(r => r.report_id == reportId);
+    }
+
+    var currentUserId = GetCurrentUserId();
+    if (currentUserId == null)
+    {
+      return false;
+    }
+
+    return await _dbContext.Reports
+      .AsNoTracking()
+      .AnyAsync(r => r.report_id == reportId && r.submitted_by_user_id == currentUserId.Value);
+  }
+
+  private uint? GetCurrentUserId()
+  {
+    var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    return uint.TryParse(userIdValue, out var userId) ? userId : null;
   }
 }

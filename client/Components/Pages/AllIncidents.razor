@@ -2,8 +2,57 @@
 @layout MainLayout
 @inject IHttpClientFactory HttpFactory
 @inject NavigationManager NavigationManager
+@inject client.Services.AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <h3>All Incidents</h3>
+
+<div class="row g-3 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label" for="incident-search">Search</label>
+        <input id="incident-search" class="form-control" @bind="searchText" @bind:event="oninput" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label" for="incident-category">Category</label>
+        <select id="incident-category" class="form-select" @bind="selectedCategoryId">
+            <option value="">All</option>
+            @foreach (var category in categories)
+            {
+                <option value="@category.category_id">@category.category_name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label" for="incident-severity">Severity</label>
+        <select id="incident-severity" class="form-select" @bind="selectedSeverityId">
+            <option value="">All</option>
+            @foreach (var severity in severities)
+            {
+                <option value="@severity.severity_id">@severity.severity_name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label" for="incident-status">Status</label>
+        <select id="incident-status" class="form-select" @bind="resolvedFilter">
+            <option value="">All</option>
+            <option value="false">Open</option>
+            <option value="true">Resolved</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label" for="incident-page-size">Rows</label>
+        <select id="incident-page-size" class="form-select" @bind="pageSize">
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+        </select>
+    </div>
+    <div class="col-12 d-flex gap-2">
+        <button type="button" class="btn btn-primary" @onclick="ApplyFilters">Apply</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="ClearFilters">Clear</button>
+    </div>
+</div>
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
@@ -25,6 +74,7 @@ else
                 <th>Title</th>
                 <th>Category</th>
                 <th>Severity</th>
+                <th>Status</th>
                 <th>Created</th>
                 <th>Updated</th>
                 <th>Actions</th>
@@ -37,34 +87,176 @@ else
                     <td>@incident.incident_title</td>
                     <td>@(incident.Category?.category_name ?? incident.category_id.ToString())</td>
                     <td>@(incident.Severity?.severity_name ?? incident.severity_id.ToString())</td>
+                    <td>@(incident.resolved_at == null ? "Open" : "Resolved")</td>
                     <td>@incident.created_at.ToString("g")</td>
                     <td>@incident.updated_at.ToString("g")</td>
                     <td>
-                        <button class="btn btn-info" @onclick="@(() => NavigationManager.NavigateTo($"/incidents/{incident.incident_id}"))">View</button>
+                        <div class="btn-group">
+                            <button class="btn btn-info" @onclick="@(() => NavigationManager.NavigateTo($"/incidents/{incident.incident_id}"))">View</button>
+                            @if (canDeleteIncidents)
+                            {
+                                <button class="btn btn-danger" @onclick="@(() => DeleteIncident(incident.incident_id))">Delete</button>
+                            }
+                        </div>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="text-muted">
+            Page @currentPage of @Math.Max(totalPages, 1) &middot; @totalCount incident(s)
+        </div>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+            <button type="button" class="btn btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="NextPage">Next</button>
+        </div>
+    </div>
 }
 
 @code {
     private List<IncidentListItem>? incidents;
+    private List<CategoryLookup> categories = [];
+    private List<SeverityLookup> severities = [];
     private string? errorMessage;
+    private string searchText = "";
+    private string selectedCategoryId = "";
+    private string selectedSeverityId = "";
+    private string resolvedFilter = "";
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalCount;
+    private int totalPages;
+    private bool canDeleteIncidents;
 
-    private HttpClient ApiClient => HttpFactory.CreateClient("Api");
+    private HttpClient ApiClient => AuthService.CreateAuthorizedApiClient();
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadAuthorization();
+        await LoadLookups();
+        await LoadIncidents();
+    }
+
+    private async Task LoadAuthorization()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        canDeleteIncidents = authState.User.IsInRole("Analyst") ||
+            authState.User.IsInRole("analyst") ||
+            authState.User.IsInRole("Admin") ||
+            authState.User.IsInRole("admin");
+    }
+
+    private async Task LoadLookups()
+    {
         try
         {
-            var response = await ApiClient.GetFromJsonAsync<PagedIncidentResponse>("api/incidents");
+            categories = await ApiClient.GetFromJsonAsync<List<CategoryLookup>>("api/categories") ?? [];
+            severities = await ApiClient.GetFromJsonAsync<List<SeverityLookup>>("api/severity") ?? [];
+        }
+        catch
+        {
+            categories = [];
+            severities = [];
+        }
+    }
+
+    private async Task LoadIncidents()
+    {
+        try
+        {
+            var response = await ApiClient.GetFromJsonAsync<PagedIncidentResponse>(BuildQuery());
             incidents = response?.items ?? [];
+            currentPage = response?.page ?? currentPage;
+            pageSize = response?.pageSize ?? pageSize;
+            totalCount = response?.totalCount ?? 0;
+            totalPages = response?.totalPages ?? 0;
+            errorMessage = null;
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading incidents: {ex.Message}";
             incidents = [];
+        }
+    }
+
+    private string BuildQuery()
+    {
+        var parameters = new List<string>
+        {
+            $"page={currentPage}",
+            $"pageSize={pageSize}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            parameters.Add($"search={Uri.EscapeDataString(searchText.Trim())}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedCategoryId))
+        {
+            parameters.Add($"categoryId={selectedCategoryId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedSeverityId))
+        {
+            parameters.Add($"severityId={selectedSeverityId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(resolvedFilter))
+        {
+            parameters.Add($"resolved={resolvedFilter}");
+        }
+
+        return $"api/incidents?{string.Join("&", parameters)}";
+    }
+
+    private async Task ApplyFilters()
+    {
+        currentPage = 1;
+        await LoadIncidents();
+    }
+
+    private async Task ClearFilters()
+    {
+        searchText = "";
+        selectedCategoryId = "";
+        selectedSeverityId = "";
+        resolvedFilter = "";
+        currentPage = 1;
+        await LoadIncidents();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadIncidents();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadIncidents();
+        }
+    }
+
+    private async Task DeleteIncident(uint incidentId)
+    {
+        try
+        {
+            var response = await ApiClient.DeleteAsync($"api/incidents/{incidentId}");
+            response.EnsureSuccessStatusCode();
+            await LoadIncidents();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting incident: {ex.Message}";
         }
     }
 
@@ -92,6 +284,7 @@ else
         public DateTime updated_at { get; set; }
         public DateTime? resolved_at { get; set; }
         public bool CanEdit { get; set; }
+        public bool CanDelete { get; set; }
         public bool IsOwner { get; set; }
         public bool IsReadOnly { get; set; }
     }

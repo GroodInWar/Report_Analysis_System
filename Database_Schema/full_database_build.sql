@@ -1109,6 +1109,92 @@ GROUP BY
 -- End file_analysis_website_routines.sql
 -- ============================================================================
 
+-- Demo application data.
+-- These accounts are mirrored by the EF Core runtime seeder. The password
+-- values below are SHA-256 hashes accepted by the app's legacy-login fallback;
+-- the app rehashes them with ASP.NET Identity after first login.
+INSERT INTO `users` (
+    `user_id`,
+    `role_id`,
+    `last_name`,
+    `first_name`,
+    `username`,
+    `email`,
+    `password_hash`,
+    `created_at`,
+    `updated_at`
+)
+VALUES
+    (10, 1, 'User', 'Admin', 'admin', 'admin@example.com', '3eb3fe66b31e3b4d10fa70b5cad49c7112294af6ae4e476a1c405155d45aa121', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (11, 3, 'Analyst', 'Avery', 'analyst', 'analyst@example.com', '84a6ed197836ce9fe88ed4cd036a048c7b01ce048ba35d8f9b2f7cf6bbc2970a', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (12, 2, 'User', 'Uma', 'user', 'user@example.com', 'bc5848f227cc161eb5f68dfe98cb13110a9c843ce69e953a88107d865583d397', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+INSERT INTO `incidents` (
+    `incident_id`,
+    `created_by_user_id`,
+    `category_id`,
+    `severity_id`,
+    `incident_title`,
+    `incident_description`,
+    `created_at`,
+    `updated_at`,
+    `resolved_at`
+)
+VALUES
+    (10, 11, 2, 3, 'Credential phishing campaign', 'Multiple users reported password reset emails pointing to an external collection site.', CURRENT_TIMESTAMP - INTERVAL 3 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, NULL),
+    (11, 11, 9, 2, 'VPN brute-force activity', 'Authentication logs show repeated failed VPN attempts against one account.', CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, NULL),
+    (12, 10, 3, 4, 'Ransomware note discovered', 'A demo ransomware note was uploaded for triage and containment practice.', CURRENT_TIMESTAMP - INTERVAL 4 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY);
+
+INSERT INTO `reports` (
+    `report_id`,
+    `submitted_by_user_id`,
+    `incident_id`,
+    `title`,
+    `report_text`,
+    `status`,
+    `submitted_at`,
+    `updated_at`
+)
+VALUES
+    (10, 12, 10, 'Suspicious password reset email', 'A user received an email asking them to reset their password through an unknown link.', 'linked', CURRENT_TIMESTAMP - INTERVAL 4 DAY, CURRENT_TIMESTAMP - INTERVAL 3 DAY),
+    (11, 12, NULL, 'Repeated VPN login failures', 'Several failed VPN login attempts were observed against a single account.', 'under_review', CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY);
+
+INSERT INTO `comments` (
+    `comment_id`,
+    `incident_id`,
+    `user_id`,
+    `comment_text`,
+    `created_at`,
+    `updated_at`
+)
+VALUES
+    (10, 10, 11, 'Initial triage completed. Blocking indicators and preserving email evidence.', CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 2 DAY),
+    (11, 10, 10, 'Escalated to admin review for tenant-wide mailbox search.', CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY),
+    (12, 11, 11, 'Waiting for additional logs before closing this investigation.', CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY);
+
+INSERT INTO `files` (
+    `file_id`,
+    `file_name`,
+    `file_path`,
+    `file_hash`,
+    `uploaded_at`
+)
+VALUES
+    (10, 'phishing-email.eml', 'files/demo_phishing-email.eml', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', CURRENT_TIMESTAMP - INTERVAL 3 DAY),
+    (11, 'vpn-auth-log.txt', 'files/demo_vpn-auth-log.txt', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', CURRENT_TIMESTAMP - INTERVAL 2 DAY),
+    (12, 'ransom-note.txt', 'files/demo_ransom-note.txt', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', CURRENT_TIMESTAMP - INTERVAL 1 DAY);
+
+INSERT INTO `report_files` (`report_id`, `file_id`)
+VALUES
+    (10, 10),
+    (11, 11);
+
+INSERT INTO `incident_files` (`incident_id`, `file_id`)
+VALUES
+    (10, 10),
+    (11, 11),
+    (12, 12);
+
 -- CRUD examples are kept separate because they intentionally roll back.
 -- Run Database_Schema/crud_examples.sql after the rebuild when you want examples.
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,20 +29,19 @@ public class FilesController : ControllerBase
   }
 
   [HttpGet]
-  [AllowAnonymous]
-  public async Task<ActionResult<IEnumerable<Shared.Models.File>>> GetAll()
+  [Authorize(Roles = "Analyst,analyst,Admin,admin")]
+  public async Task<ActionResult<IEnumerable<object>>> GetAll()
   {
     var files = await _dbContext.Files
       .AsNoTracking()
       .OrderByDescending(f => f.uploaded_at)
       .ToListAsync();
 
-    return Ok(files);
+    return Ok(files.Select(ToFileMetadata));
   }
 
   [HttpGet("{id}")]
-  [AllowAnonymous]
-  public async Task<ActionResult<Shared.Models.File>> GetFile(uint id)
+  public async Task<ActionResult<object>> GetFile(uint id)
   {
     var file = await _dbContext.Files
       .AsNoTracking()
@@ -52,11 +52,43 @@ public class FilesController : ControllerBase
       return NotFound();
     }
 
-    return Ok(file);
+    if (!await CanAccessFile(id))
+    {
+      return Forbid();
+    }
+
+    return Ok(ToFileMetadata(file));
+  }
+
+  [HttpGet("{id}/download")]
+  public async Task<IActionResult> DownloadFile(uint id)
+  {
+    var file = await _dbContext.Files
+      .AsNoTracking()
+      .FirstOrDefaultAsync(f => f.file_id == id);
+
+    if (file == null)
+    {
+      return NotFound();
+    }
+
+    if (!await CanAccessFile(id))
+    {
+      return Forbid();
+    }
+
+    var storedPath = GetStoredFilePath(file.file_path);
+    if (storedPath == null || !System.IO.File.Exists(storedPath))
+    {
+      return NotFound("The stored file is missing.");
+    }
+
+    return PhysicalFile(storedPath, "application/octet-stream", file.file_name);
   }
 
   [HttpPost]
-  public async Task<ActionResult<Shared.Models.File>> PostFile(Shared.Models.File file)
+  [Authorize(Roles = "Admin,admin")]
+  public async Task<ActionResult<object>> PostFile(Shared.Models.File file)
   {
     var validationError = ValidateFileHash(file.file_hash);
     if (validationError != null)
@@ -73,13 +105,16 @@ public class FilesController : ControllerBase
     _dbContext.Files.Add(file);
     await _dbContext.SaveChangesAsync();
 
-    return CreatedAtAction(nameof(GetFile), new { id = file.file_id }, file);
+    return CreatedAtAction(nameof(GetFile), new { id = file.file_id }, ToFileMetadata(file));
   }
 
   // https://learn.microsoft.com/en-us/dotnet/api/microsoft.aspnetcore.mvc.requestsizelimitattribute
   [HttpPost("upload")]
   [RequestSizeLimit(MaxUploadBytes)]
-  public async Task<ActionResult<Shared.Models.File>> UploadFile([FromForm] IFormFile uploadedFile, [FromQuery] uint? reportId)
+  public async Task<ActionResult<object>> UploadFile(
+    [FromForm] IFormFile uploadedFile,
+    [FromQuery] uint? reportId,
+    [FromQuery] uint? incidentId)
   {
     if (uploadedFile == null || uploadedFile.Length == 0)
     {
@@ -102,6 +137,11 @@ public class FilesController : ControllerBase
       originalFileName = originalFileName[..255];
     }
 
+    if (reportId.HasValue && incidentId.HasValue)
+    {
+      return BadRequest("Upload can be linked to either a report or an incident, not both.");
+    }
+
     Report? reportToLink = null;
     if (reportId.HasValue)
     {
@@ -115,6 +155,24 @@ public class FilesController : ControllerBase
       }
 
       if (!IsCurrentUser(reportToLink.submitted_by_user_id) && !User.IsInRole("Analyst") && !User.IsInRole("analyst"))
+      {
+        return Forbid();
+      }
+    }
+
+    Incident? incidentToLink = null;
+    if (incidentId.HasValue)
+    {
+      incidentToLink = await _dbContext.Incidents
+        .AsNoTracking()
+        .FirstOrDefaultAsync(i => i.incident_id == incidentId.Value);
+
+      if (incidentToLink == null)
+      {
+        return NotFound("Incident not found.");
+      }
+
+      if (!CanManageIncident(incidentToLink.CreatedByUserId))
       {
         return Forbid();
       }
@@ -166,10 +224,19 @@ public class FilesController : ControllerBase
         });
       }
 
+      if (incidentToLink != null)
+      {
+        _dbContext.IncidentFiles.Add(new Incident_File
+        {
+          incident_id = incidentToLink.incident_id,
+          file_id = file.file_id
+        });
+      }
+
       await _dbContext.SaveChangesAsync();
       await transaction.CommitAsync();
 
-      return CreatedAtAction(nameof(GetFile), new { id = file.file_id }, file);
+      return CreatedAtAction(nameof(GetFile), new { id = file.file_id }, ToFileMetadata(file));
     }
     catch
     {
@@ -185,6 +252,7 @@ public class FilesController : ControllerBase
   }
 
   [HttpPut("{id}")]
+  [Authorize(Roles = "Admin,admin")]
   public async Task<IActionResult> PutFile(uint id, Shared.Models.File file)
   {
     if (id != file.file_id)
@@ -215,6 +283,7 @@ public class FilesController : ControllerBase
   }
 
   [HttpDelete("{id}")]
+  [Authorize(Roles = "Admin,admin")]
   public async Task<IActionResult> DeleteFile(uint id)
   {
     var file = await _dbContext.Files.FindAsync(id);
@@ -225,13 +294,15 @@ public class FilesController : ControllerBase
 
     await using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
-    await _dbContext.ReportFiles
+    var reportFiles = await _dbContext.ReportFiles
       .Where(rf => rf.file_id == id)
-      .ExecuteDeleteAsync();
+      .ToListAsync();
+    _dbContext.ReportFiles.RemoveRange(reportFiles);
 
-    await _dbContext.IncidentFiles
+    var incidentFiles = await _dbContext.IncidentFiles
       .Where(ifile => ifile.file_id == id)
-      .ExecuteDeleteAsync();
+      .ToListAsync();
+    _dbContext.IncidentFiles.RemoveRange(incidentFiles);
 
     var storedPath = GetStoredFilePath(file.file_path);
 
@@ -315,12 +386,71 @@ public class FilesController : ControllerBase
 
   private uint? GetCurrentUserId()
   {
-    var userIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
     return uint.TryParse(userIdValue, out var userId) ? userId : null;
   }
 
   private bool IsCurrentUser(uint userId)
   {
     return GetCurrentUserId() == userId;
+  }
+
+  private bool IsAnalystOrAdmin()
+  {
+    return User.IsInRole("Analyst") ||
+      User.IsInRole("analyst") ||
+      User.IsInRole("Admin") ||
+      User.IsInRole("admin");
+  }
+
+  private bool CanManageIncident(uint createdByUserId)
+  {
+    return IsAnalystOrAdmin();
+  }
+
+  private async Task<bool> CanAccessFile(uint fileId)
+  {
+    if (IsAnalystOrAdmin())
+    {
+      return true;
+    }
+
+    var currentUserId = GetCurrentUserId();
+    if (currentUserId == null)
+    {
+      return false;
+    }
+
+    var ownsLinkedReport = await (
+      from reportFile in _dbContext.ReportFiles.AsNoTracking()
+      join report in _dbContext.Reports.AsNoTracking()
+        on reportFile.report_id equals report.report_id
+      where reportFile.file_id == fileId && report.submitted_by_user_id == currentUserId.Value
+      select reportFile.file_id)
+      .AnyAsync();
+
+    if (ownsLinkedReport)
+    {
+      return true;
+    }
+
+    return await (
+      from incidentFile in _dbContext.IncidentFiles.AsNoTracking()
+      join incident in _dbContext.Incidents.AsNoTracking()
+        on incidentFile.incident_id equals incident.incident_id
+      where incidentFile.file_id == fileId && incident.CreatedByUserId == currentUserId.Value
+      select incidentFile.file_id)
+      .AnyAsync();
+  }
+
+  private static object ToFileMetadata(Shared.Models.File file)
+  {
+    return new
+    {
+      file.file_id,
+      file.file_name,
+      file.file_hash,
+      file.uploaded_at
+    };
   }
 }

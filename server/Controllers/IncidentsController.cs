@@ -36,6 +36,7 @@ public class IncidentsController : ControllerBase
         var currentUserId = GetCurrentUserId();
         var isAuthenticated = User.Identity?.IsAuthenticated == true;
         var isAnalyst = User.IsInRole("Analyst") || User.IsInRole("analyst");
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("admin");
 
         var query = _dbContext.Incidents.AsNoTracking();
 
@@ -49,7 +50,7 @@ public class IncidentsController : ControllerBase
             query = query.Where(i => i.severity_id == severityId.Value);
         }
 
-        if (createdByUserId.HasValue && isAnalyst)
+        if (createdByUserId.HasValue && (isAnalyst || isAdmin))
         {
             query = query.Where(i => i.CreatedByUserId == createdByUserId.Value);
         }
@@ -113,6 +114,7 @@ public class IncidentsController : ControllerBase
                 incident.updated_at,
                 incident.resolved_at,
                 CanEdit = currentUserId.HasValue && incident.CreatedByUserId == currentUserId.Value,
+                CanDelete = isAnalyst || isAdmin,
                 IsOwner = currentUserId.HasValue && incident.CreatedByUserId == currentUserId.Value,
                 IsReadOnly = !isAuthenticated
             })
@@ -136,6 +138,10 @@ public class IncidentsController : ControllerBase
     {
         var currentUserId = GetCurrentUserId();
         var isAuthenticated = User.Identity?.IsAuthenticated == true;
+        var canManageFiles = User.IsInRole("Analyst") ||
+            User.IsInRole("analyst") ||
+            User.IsInRole("Admin") ||
+            User.IsInRole("admin");
         var incident = await _dbContext.Incidents
             .AsNoTracking()
             .Where(i => i.incident_id == id)
@@ -177,6 +183,8 @@ public class IncidentsController : ControllerBase
                 i.updated_at,
                 i.resolved_at,
                 CanEdit = currentUserId != null && i.CreatedByUserId == currentUserId.Value,
+                CanDelete = canManageFiles,
+                CanManageFiles = canManageFiles,
                 IsOwner = currentUserId != null && i.CreatedByUserId == currentUserId.Value,
                 Reports = i.Reports
                     .Select(r => new
@@ -194,6 +202,7 @@ public class IncidentsController : ControllerBase
                     .ThenBy(c => c.comment_id)
                     .Select(c => new
                     {
+                        c.comment_id,
                         c.user_id,
                         User = c.User == null
                             ? null
@@ -204,9 +213,10 @@ public class IncidentsController : ControllerBase
                                 c.User.last_name,
                                 c.User.username,
                                 c.User.email
-                            },
+                        },
                         c.comment_text,
-                        c.created_at
+                        c.created_at,
+                        c.updated_at
                     })
                     .ToList(),
                 Files = (
@@ -372,13 +382,15 @@ public class IncidentsController : ControllerBase
             report.updated_at = DateTime.UtcNow;
         }
 
-        await _dbContext.Comments
+        var comments = await _dbContext.Comments
             .Where(c => c.incident_id == id)
-            .ExecuteDeleteAsync();
+            .ToListAsync();
+        _dbContext.Comments.RemoveRange(comments);
 
-        await _dbContext.IncidentFiles
+        var incidentFiles = await _dbContext.IncidentFiles
             .Where(ifile => ifile.incident_id == id)
-            .ExecuteDeleteAsync();
+            .ToListAsync();
+        _dbContext.IncidentFiles.RemoveRange(incidentFiles);
 
         _dbContext.Incidents.Remove(incident);
         await _dbContext.SaveChangesAsync();

@@ -1,5 +1,6 @@
 using client.DTOs;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -10,21 +11,27 @@ namespace client.Services;
 public class AuthService : AuthenticationStateProvider
 {
   private readonly IHttpClientFactory _httpClientFactory;
+  private readonly ProtectedLocalStorage _localStorage;
   private string? _token;
   private CurrentUserResponse? _currentUser;
+  private bool _hasTriedRestore;
+  private const string AuthStorageKey = "file-analysis-auth";
 
-  public AuthService(IHttpClientFactory httpClientFactory)
+  public AuthService(IHttpClientFactory httpClientFactory, ProtectedLocalStorage localStorage)
   {
     _httpClientFactory = httpClientFactory;
+    _localStorage = localStorage;
   }
 
   private HttpClient Api => _httpClientFactory.CreateClient("Api");
 
-  public override Task<AuthenticationState> GetAuthenticationStateAsync()
+  public override async Task<AuthenticationState> GetAuthenticationStateAsync()
   {
+    await RestoreSessionFromStorage();
+
     if (_currentUser == null || string.IsNullOrEmpty(_token))
     {
-      return Task.FromResult(new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity())));
+      return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
     }
 
     var claims = new List<Claim>
@@ -40,7 +47,7 @@ public class AuthService : AuthenticationStateProvider
     }
 
     var identity = new ClaimsIdentity(claims, "Bearer");
-    return Task.FromResult(new AuthenticationState(new ClaimsPrincipal(identity)));
+    return new AuthenticationState(new ClaimsPrincipal(identity));
   }
 
   public async Task<bool> Register(RegisterRequest request)
@@ -83,6 +90,15 @@ public class AuthService : AuthenticationStateProvider
     _currentUser = login?.user;
 
     var isLoggedIn = !string.IsNullOrEmpty(_token) && _currentUser != null;
+    if (isLoggedIn)
+    {
+      await _localStorage.SetAsync(AuthStorageKey, new AuthSession
+      {
+        token = _token!,
+        user = _currentUser!
+      });
+    }
+
     NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     return isLoggedIn;
   }
@@ -111,8 +127,8 @@ public class AuthService : AuthenticationStateProvider
   {
     _token = null;
     _currentUser = null;
+    await _localStorage.DeleteAsync(AuthStorageKey);
     NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
-    await Task.CompletedTask;
   }
 
   private void AddBearerToken(HttpClient api)
@@ -121,5 +137,37 @@ public class AuthService : AuthenticationStateProvider
     {
       api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _token);
     }
+  }
+
+  private async Task RestoreSessionFromStorage()
+  {
+    if (_hasTriedRestore || !string.IsNullOrEmpty(_token))
+    {
+      return;
+    }
+
+    _hasTriedRestore = true;
+
+    try
+    {
+      var storedSession = await _localStorage.GetAsync<AuthSession>(AuthStorageKey);
+      if (storedSession.Success &&
+        storedSession.Value != null &&
+        !string.IsNullOrWhiteSpace(storedSession.Value.token))
+      {
+        _token = storedSession.Value.token;
+        _currentUser = storedSession.Value.user;
+      }
+    }
+    catch (InvalidOperationException)
+    {
+      _hasTriedRestore = false;
+    }
+  }
+
+  private sealed class AuthSession
+  {
+    public string token { get; set; } = "";
+    public CurrentUserResponse? user { get; set; }
   }
 }

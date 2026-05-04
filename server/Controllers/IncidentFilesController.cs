@@ -64,6 +64,22 @@ public class IncidentFilesController : ControllerBase
       return BadRequest("Invalid incident-file link data.");
     }
 
+    var incidentExists = await _dbContext.Incidents
+      .AsNoTracking()
+      .AnyAsync(i => i.incident_id == incidentFile.incident_id);
+    if (!incidentExists)
+    {
+      return NotFound("Incident not found.");
+    }
+
+    var fileExists = await _dbContext.Files
+      .AsNoTracking()
+      .AnyAsync(f => f.file_id == incidentFile.file_id);
+    if (!fileExists)
+    {
+      return NotFound("File not found.");
+    }
+
     var exists = await _dbContext.IncidentFiles
       .AnyAsync(i_f => i_f.incident_id == incidentFile.incident_id && i_f.file_id == incidentFile.file_id);
     if (exists)
@@ -84,13 +100,15 @@ public class IncidentFilesController : ControllerBase
   [Authorize(Roles = "Analyst,analyst,Admin,admin")]
   public async Task<IActionResult> DeleteIncidentFileLink(uint incidentId, uint fileId)
   {
-    var deleted = await _dbContext.IncidentFiles
-      .Where(i_f => i_f.incident_id == incidentId && i_f.file_id == fileId)
-      .ExecuteDeleteAsync();
-    if (deleted == 0)
+    var incidentFile = await _dbContext.IncidentFiles
+      .FirstOrDefaultAsync(i_f => i_f.incident_id == incidentId && i_f.file_id == fileId);
+    if (incidentFile == null)
     {
       return NotFound("The incident-file link not found.");
     }
+
+    _dbContext.IncidentFiles.Remove(incidentFile);
+    await _dbContext.SaveChangesAsync();
 
     return NoContent();
   }
