@@ -4,6 +4,8 @@ File Analysis Website is a three-tier incident reporting and triage application 
 
 This project was developed for **CS-GY 6083: Principles of Database Systems** at NYU. The focus of the project is to demonstrate relational database design, normalization, E-R modeling, SQL implementation, and a working application that interacts with a MySQL database through an application server.
 
+The presentation can be found in [this link](https://youtu.be/b75tdhrZ9RE).
+
 ## High-Level Application Model
 
 The application follows a three-tier architecture:
